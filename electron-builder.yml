@@ -1,0 +1,22 @@
+appId: com.safebox.app
+# 英文名用于可执行文件与安装目录，中文名用于快捷方式显示
+productName: SafeBox
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: 秘匣
+npmRebuild: false

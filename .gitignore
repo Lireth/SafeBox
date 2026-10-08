@@ -1,0 +1,36 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+
+# 日志
+*.log
+logs/
+npm-debug.log*
+
+# 环境变量（示例文件除外）
+.env
+.env.*
+!.env.example
+
+# 编辑器 / IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# 操作系统（Windows / macOS）
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# 本地临时文件
+*.local
+
+# 其他
+.trae/
+docs/

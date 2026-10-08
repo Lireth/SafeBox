@@ -1,0 +1,32 @@
+:root {
+  color-scheme: light dark;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+  background: light-dark(#f5f5f5, #1e1e1e);
+  color: light-dark(#1f1f1f, #eaeaea);
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 8px;
+}
+
+.subtitle {
+  margin: 0;
+  opacity: 0.6;
+}
+
+.versions {
+  list-style: none;
+  padding: 0;
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
