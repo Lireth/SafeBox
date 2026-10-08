@@ -2,7 +2,8 @@ import type { ElectronAPI } from '../../../electron/api'
 
 declare global {
   interface Window {
-    electronAPI?: ElectronAPI
+    /** 由 preload 通过 contextBridge 注入 */
+    safebox: ElectronAPI
   }
 }
 
