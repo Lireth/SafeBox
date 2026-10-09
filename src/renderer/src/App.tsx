@@ -8,7 +8,7 @@ import { LockScreen } from './components/LockScreen'
 import { PinSetupModal } from './components/PinSetupModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
-import type { AccountEntry, EntryDraft } from '../../../electron/api'
+import type { AccountEntry, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
   mode: 'new' | 'edit'

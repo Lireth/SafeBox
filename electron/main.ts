@@ -41,7 +41,8 @@ function createMainWindow(): BrowserWindow {
     void win.loadURL(process.env.VITE_DEV_SERVER_URL as string)
     win.webContents.openDevTools()
   } else {
-    void win.loadFile(path.join(__dirname, '../dist/index.html'))
+    // __dirname = dist-electron/electron（rootDir 为项目根后输出按源码目录展开）
+    void win.loadFile(path.join(__dirname, '../../dist/index.html'))
   }
 
   return win

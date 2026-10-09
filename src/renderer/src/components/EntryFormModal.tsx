@@ -3,7 +3,7 @@ import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { CATEGORIES } from '../lib/categories'
 import { generatePassword, passwordStrength } from '../lib/password'
-import type { AccountEntry, EntryDraft } from '../../../../electron/api'
+import type { AccountEntry, EntryDraft } from '../../../../shared/types'
 
 interface EntryFormModalProps {
   /** null = 新增，否则为编辑的原始记录 */

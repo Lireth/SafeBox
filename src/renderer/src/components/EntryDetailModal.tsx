@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
-import type { AccountEntry } from '../../../../electron/api'
+import type { AccountEntry } from '../../../../shared/types'
 
 interface EntryDetailModalProps {
   entry: AccountEntry

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Icon } from './Icon'
 import { CATEGORIES, type FilterId } from '../lib/categories'
-import type { AccountEntry } from '../../../../electron/api'
+import type { AccountEntry } from '../../../../shared/types'
 
 interface SidebarProps {
   entries: AccountEntry[]

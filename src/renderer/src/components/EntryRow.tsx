@@ -1,6 +1,6 @@
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
-import type { AccountEntry } from '../../../../electron/api'
+import type { AccountEntry } from '../../../../shared/types'
 
 interface EntryRowProps {
   entry: AccountEntry

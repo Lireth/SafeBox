@@ -17,5 +17,5 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src/renderer/src", "electron/api.ts"]
+  "include": ["src/renderer/src", "shared/types.ts"]
 }

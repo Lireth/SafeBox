@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
-import type { AccountEntry, EntryDraft, LoadStatus, LockState, SafeBoxAPI } from './api'
+import type { AccountEntry, EntryDraft, LoadStatus, LockState, SafeBoxAPI } from '../shared/types'
 
 // ============================================================
 // 预加载端实现

@@ -1,5 +1,5 @@
 import { app, clipboard, ipcMain, shell } from 'electron'
-import type { EntryDraft } from './api'
+import type { EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import { VaultStore } from './vault'
 

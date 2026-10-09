@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { safeStorage } from 'electron'
-import type { AccountEntry, EntryDraft, LoadStatus } from './api'
+import type { AccountEntry, EntryDraft, LoadStatus } from '../shared/types'
 
 /**
  * 本地数据存储：无启动密码，应用启动即加载。
