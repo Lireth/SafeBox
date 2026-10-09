@@ -1,13 +1,13 @@
 import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc'
-import { VaultManager } from './vault'
+import { VaultStore } from './vault'
 
 // 是否为开发模式（由 npm script 注入 VITE_DEV_SERVER_URL）
 const isDev = !!process.env.VITE_DEV_SERVER_URL
 
-// 加密金库：数据文件存放在系统用户数据目录（Windows: %APPDATA%/safebox）
-const vault = new VaultManager(app.getPath('userData'))
+// 本地数据存储：文件位于系统用户数据目录（Windows: %APPDATA%/safebox）
+const store = new VaultStore(app.getPath('userData'))
 
 function createMainWindow(): void {
   const win = new BrowserWindow({
@@ -42,7 +42,8 @@ function createMainWindow(): void {
 }
 
 app.whenReady().then(() => {
-  registerIpcHandlers(vault, () => BrowserWindow.getAllWindows()[0] ?? null)
+  store.load()
+  registerIpcHandlers(store)
   createMainWindow()
 
   app.on('activate', () => {
@@ -52,7 +53,6 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  // Windows / Linux: 关闭所有窗口即退出（退出前清空内存中的密钥）
-  vault.lock()
+  // Windows / Linux: 关闭所有窗口即退出
   if (process.platform !== 'darwin') app.quit()
 })

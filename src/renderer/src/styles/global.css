@@ -50,7 +50,7 @@ textarea {
   clip: rect(0 0 0 0);
 }
 
-/* ---------- 启动屏 ---------- */
+/* ---------- 启动加载屏 ---------- */
 
 .boot-screen {
   display: flex;
@@ -74,50 +74,7 @@ textarea {
   }
 }
 
-/* ---------- 设置 / 解锁屏 ---------- */
-
-.auth-screen {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  animation: fade-in 0.25s ease;
-}
-
-.auth-card {
-  width: 380px;
-  padding: 40px 36px 30px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  text-align: center;
-}
-
-.auth-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 60px;
-  height: 60px;
-  margin-bottom: 14px;
-  border-radius: 18px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
-  box-shadow: 0 6px 18px light-dark(rgba(84, 87, 214, 0.35), rgba(138, 141, 245, 0.25));
-}
-
-.auth-title {
-  margin: 0 0 4px;
-  font-size: 22px;
-  letter-spacing: 0.06em;
-}
-
-.auth-subtitle {
-  margin: 0 0 24px;
-  font-size: 13px;
-  color: var(--text-2);
-}
+/* ---------- 表单元素 ---------- */
 
 .form-error {
   margin: 4px 0 10px;
@@ -128,24 +85,6 @@ textarea {
   background: var(--danger-soft);
   border-radius: 8px;
 }
-
-.form-warning {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin: 16px 0 0;
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.form-hint {
-  margin: 14px 0 0;
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-/* ---------- 表单元素 ---------- */
 
 .field-label {
   display: block;
@@ -582,11 +521,6 @@ textarea {
   gap: 6px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
-}
-
-.btn-lock:hover {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
 /* ---------- 主区域 ---------- */

@@ -4,14 +4,9 @@ import { EntryRow } from './components/EntryRow'
 import { EntryFormModal } from './components/EntryFormModal'
 import { EntryDetailModal } from './components/EntryDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
-import { SetupScreen } from './components/SetupScreen'
-import { LockScreen } from './components/LockScreen'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
-import type { AccountEntry, EntryDraft, VaultStatus } from '../../../electron/api'
-
-/** 界面状态：在金库状态之上增加初始加载态 */
-type ScreenState = 'loading' | VaultStatus
+import type { AccountEntry, EntryDraft } from '../../../electron/api'
 
 interface FormTarget {
   mode: 'new' | 'edit'
@@ -19,7 +14,7 @@ interface FormTarget {
 }
 
 export default function App(): React.JSX.Element {
-  const [status, setStatus] = useState<ScreenState>('loading')
+  const [ready, setReady] = useState(false)
   const [entries, setEntries] = useState<AccountEntry[]>([])
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
@@ -29,36 +24,22 @@ export default function App(): React.JSX.Element {
   const [toast, setToast] = useState('')
   const toastTimer = useRef<number | undefined>(undefined)
 
-  // 初始化：获取金库状态 + 订阅状态变化（如自动锁定）
+  // 启动即加载账号数据
   useEffect(() => {
     let cancelled = false
-
-    void window.safebox.getStatus().then((s) => {
-      if (!cancelled) setStatus(s)
-    })
-
-    const unsubscribe = window.safebox.onStatusChanged((s) => {
-      setStatus(s)
-      if (s === 'unlocked') {
-        // 解锁/创建成功后加载账号数据
-        void window.safebox
-          .listEntries()
-          .then((list) => {
-            if (!cancelled) setEntries(list)
-          })
-          .catch(() => undefined)
-      } else {
-        // 锁定后立即清空渲染进程中的敏感数据
-        setEntries([])
-        setFormTarget(null)
-        setDetailEntry(null)
-        setDeleteTarget(null)
-      }
-    })
-
+    void window.safebox
+      .listEntries()
+      .then((list) => {
+        if (!cancelled) {
+          setEntries(list)
+          setReady(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setReady(true)
+      })
     return () => {
       cancelled = true
-      unsubscribe()
     }
   }, [])
 
@@ -85,18 +66,6 @@ export default function App(): React.JSX.Element {
     filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : getCategory(filter).label
 
   // ---- 动作 ----
-
-  async function handleSetup(masterPassword: string): Promise<void> {
-    await window.safebox.createVault(masterPassword)
-  }
-
-  async function handleUnlock(masterPassword: string): Promise<void> {
-    await window.safebox.unlock(masterPassword)
-  }
-
-  function handleLock(): void {
-    void window.safebox.lock()
-  }
 
   async function handleSubmitForm(draft: EntryDraft): Promise<void> {
     if (!formTarget) return
@@ -137,20 +106,12 @@ export default function App(): React.JSX.Element {
 
   // ---- 渲染 ----
 
-  if (status === 'loading') {
+  if (!ready) {
     return (
       <div className="boot-screen">
         <div className="spinner" />
       </div>
     )
-  }
-
-  if (status === 'setup') {
-    return <SetupScreen onSetup={handleSetup} />
-  }
-
-  if (status === 'locked') {
-    return <LockScreen onUnlock={handleUnlock} />
   }
 
   return (
@@ -161,7 +122,6 @@ export default function App(): React.JSX.Element {
         query={query}
         onFilterChange={setFilter}
         onQueryChange={setQuery}
-        onLock={handleLock}
         onAdd={() => setFormTarget({ mode: 'new', entry: null })}
       />
 
@@ -184,7 +144,7 @@ export default function App(): React.JSX.Element {
                 <Icon name="inbox" size={34} strokeWidth={1.5} />
               </div>
               <h2>还没有保存任何账号</h2>
-              <p>添加您的第一个账号，数据将以加密形式保存在本机</p>
+              <p>添加您的第一个账号，数据将加密保存在本机</p>
               <button type="button" className="btn btn-primary" onClick={() => setFormTarget({ mode: 'new', entry: null })}>
                 <Icon name="plus" size={16} />
                 添加账号

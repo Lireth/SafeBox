@@ -4,8 +4,6 @@ import { ipcRenderer } from 'electron'
 // 类型定义（主进程与渲染进程共享，渲染端仅做 type-only 引入）
 // ============================================================
 
-export type VaultStatus = 'setup' | 'locked' | 'unlocked'
-
 /** 一条账号记录 */
 export interface AccountEntry {
   id: string
@@ -17,7 +15,7 @@ export interface AccountEntry {
   url: string
   /** 用户名 / 手机号 / 邮箱 */
   username: string
-  /** 密码（金库内加密存储） */
+  /** 密码 */
   password: string
   /** 备注 */
   notes: string
@@ -32,15 +30,7 @@ export type EntryDraft = Pick<AccountEntry, 'title' | 'category' | 'url' | 'user
 }
 
 export interface SafeBoxAPI {
-  /** 获取金库当前状态 */
-  getStatus(): Promise<VaultStatus>
-  /** 首次使用：设置主密码并创建金库 */
-  createVault(masterPassword: string): Promise<void>
-  /** 解锁金库 */
-  unlock(masterPassword: string): Promise<void>
-  /** 锁定金库 */
-  lock(): Promise<void>
-  /** 列出所有账号（需已解锁） */
+  /** 列出所有账号 */
   listEntries(): Promise<AccountEntry[]>
   addEntry(draft: EntryDraft): Promise<AccountEntry>
   updateEntry(id: string, draft: EntryDraft): Promise<AccountEntry>
@@ -50,8 +40,6 @@ export interface SafeBoxAPI {
   copyText(text: string): Promise<void>
   /** 用系统默认浏览器打开网址（仅允许 http/https） */
   openExternal(url: string): Promise<void>
-  /** 订阅金库状态变化（如自动锁定），返回取消订阅函数 */
-  onStatusChanged(callback: (status: VaultStatus) => void): () => void
 }
 
 // ============================================================
@@ -59,15 +47,11 @@ export interface SafeBoxAPI {
 // ============================================================
 
 const INVOKE_CHANNELS = new Set([
-  'vault:get-status',
-  'vault:create',
-  'vault:unlock',
-  'vault:lock',
-  'vault:list-entries',
-  'vault:add-entry',
-  'vault:update-entry',
-  'vault:delete-entry',
-  'vault:toggle-favorite',
+  'entries:list',
+  'entries:add',
+  'entries:update',
+  'entries:delete',
+  'entries:toggle-favorite',
   'clipboard:copy',
   'app:open-external'
 ])
@@ -88,22 +72,13 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 
 export const electronAPI: SafeBoxAPI = {
-  getStatus: () => invoke<VaultStatus>('vault:get-status'),
-  createVault: (masterPassword) => invoke('vault:create', masterPassword),
-  unlock: (masterPassword) => invoke('vault:unlock', masterPassword),
-  lock: () => invoke('vault:lock'),
-  listEntries: () => invoke<AccountEntry[]>('vault:list-entries'),
-  addEntry: (draft) => invoke<AccountEntry>('vault:add-entry', draft),
-  updateEntry: (id, draft) => invoke<AccountEntry>('vault:update-entry', id, draft),
-  deleteEntry: (id) => invoke('vault:delete-entry', id),
-  toggleFavorite: (id) => invoke<AccountEntry>('vault:toggle-favorite', id),
+  listEntries: () => invoke<AccountEntry[]>('entries:list'),
+  addEntry: (draft) => invoke<AccountEntry>('entries:add', draft),
+  updateEntry: (id, draft) => invoke<AccountEntry>('entries:update', id, draft),
+  deleteEntry: (id) => invoke('entries:delete', id),
+  toggleFavorite: (id) => invoke<AccountEntry>('entries:toggle-favorite', id),
   copyText: (text) => invoke('clipboard:copy', text),
-  openExternal: (url) => invoke('app:open-external', url),
-  onStatusChanged: (callback) => {
-    const listener = (_event: unknown, status: VaultStatus): void => callback(status)
-    ipcRenderer.on('vault:status-changed', listener)
-    return () => ipcRenderer.removeListener('vault:status-changed', listener)
-  }
+  openExternal: (url) => invoke('app:open-external', url)
 }
 
 export type ElectronAPI = SafeBoxAPI

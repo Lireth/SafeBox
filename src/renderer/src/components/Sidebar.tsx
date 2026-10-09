@@ -9,11 +9,10 @@ interface SidebarProps {
   query: string
   onFilterChange: (filter: FilterId) => void
   onQueryChange: (query: string) => void
-  onLock: () => void
   onAdd: () => void
 }
 
-export function Sidebar({ entries, filter, query, onFilterChange, onQueryChange, onLock, onAdd }: SidebarProps): React.JSX.Element {
+export function Sidebar({ entries, filter, query, onFilterChange, onQueryChange, onAdd }: SidebarProps): React.JSX.Element {
   const [showClear, setShowClear] = useState(false)
 
   const counts = useMemo(() => {
@@ -88,10 +87,6 @@ export function Sidebar({ entries, filter, query, onFilterChange, onQueryChange,
         <button type="button" className="btn btn-ghost btn-block" onClick={onAdd}>
           <Icon name="plus" size={16} />
           添加账号
-        </button>
-        <button type="button" className="btn btn-ghost btn-block btn-lock" onClick={onLock}>
-          <Icon name="lock" size={15} />
-          锁定金库
         </button>
       </div>
     </aside>
