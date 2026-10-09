@@ -2,6 +2,7 @@
   "name": "safebox",
   "version": "0.1.0",
   "description": "秘匣 (SafeBox) desktop application",
+  "author": "Lireth",
   "main": "dist-electron/electron/main.js",
   "private": true,
   "scripts": {

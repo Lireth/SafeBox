@@ -10,6 +10,8 @@ files:
   - package.json
 asar: true
 win:
+  # 由 scripts/generate-icon.js 生成（多尺寸 PNG-in-ICO）
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:
@@ -19,4 +21,6 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: 秘匣
+  # ${version} 取自 package.json 的 version 字段，保持单一来源
+  artifactName: SafeBox-Setup-${version}.${ext}
 npmRebuild: false
