@@ -11,7 +11,9 @@
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json && cross-env NODE_ENV=production electron-builder",
     "build": "npm run build:renderer && npm run build:electron",
-    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.electron.json"
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.electron.json && tsc --noEmit -p tsconfig.tests.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
@@ -23,6 +25,7 @@
     "electron-builder": "^25.1.8",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
+    "vitest": "^5.0.3",
     "wait-on": "^8.0.3"
   },
   "dependencies": {
