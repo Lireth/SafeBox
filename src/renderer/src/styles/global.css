@@ -1114,8 +1114,18 @@ textarea {
   animation: toast-in 0.2s ease;
 }
 
+.toast-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+}
+
 .toast svg {
   color: #6fd28a;
+}
+
+.toast-error svg {
+  color: var(--danger);
 }
 
 /* ---------- 动画 ---------- */

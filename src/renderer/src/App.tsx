@@ -15,6 +15,16 @@ interface FormTarget {
   entry: AccountEntry | null
 }
 
+interface ToastState {
+  type: 'success' | 'error'
+  message: string
+}
+
+/** 错误消息提取：IPC 报错还原主进程真实信息 */
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback
+}
+
 export default function App(): React.JSX.Element {
   const [ready, setReady] = useState(false)
   const [entries, setEntries] = useState<AccountEntry[]>([])
@@ -28,7 +38,7 @@ export default function App(): React.JSX.Element {
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
   const [detailEntry, setDetailEntry] = useState<AccountEntry | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AccountEntry | null>(null)
-  const [toast, setToast] = useState('')
+  const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
   // 启动即加载账号数据与加载状态
@@ -118,10 +128,10 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  function showToast(message: string): void {
+  function showToast(message: string, type: 'success' | 'error' = 'success'): void {
     window.clearTimeout(toastTimer.current)
-    setToast(message)
-    toastTimer.current = window.setTimeout(() => setToast(''), 1800)
+    setToast({ type, message })
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800)
   }
 
   // 当前筛选下可见的账号：收藏优先，其余按更新时间倒序
@@ -161,29 +171,39 @@ export default function App(): React.JSX.Element {
   async function handleConfirmDelete(): Promise<void> {
     if (!deleteTarget) return
     const id = deleteTarget.id
-    await window.safebox.deleteEntry(id)
-    setEntries((prev) => prev.filter((e) => e.id !== id))
-    setDetailEntry((cur) => (cur?.id === id ? null : cur))
-    setDeleteTarget(null)
-    showToast('账号已删除')
+    try {
+      await window.safebox.deleteEntry(id)
+      setEntries((prev) => prev.filter((e) => e.id !== id))
+      setDetailEntry((cur) => (cur?.id === id ? null : cur))
+      setDeleteTarget(null)
+      showToast('账号已删除')
+    } catch (err) {
+      showToast(errorMessage(err, '删除失败'), 'error')
+    }
   }
 
   async function handleToggleFavorite(entry: AccountEntry): Promise<void> {
-    const updated = await window.safebox.toggleFavorite(entry.id)
-    setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
-    setDetailEntry((cur) => (cur?.id === updated.id ? updated : cur))
+    try {
+      const updated = await window.safebox.toggleFavorite(entry.id)
+      setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
+      setDetailEntry((cur) => (cur?.id === updated.id ? updated : cur))
+    } catch (err) {
+      showToast(errorMessage(err, '操作失败'), 'error')
+    }
   }
 
   function handleCopy(text: string, message: string): void {
-    void window.safebox.copyText(text)
-    showToast(message)
+    window.safebox
+      .copyText(text)
+      .then(() => showToast(message))
+      .catch((err) => showToast(errorMessage(err, '复制失败'), 'error'))
   }
 
   async function handleLockNow(): Promise<void> {
     try {
       await window.safebox.lockNow()
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '锁定失败')
+      showToast(errorMessage(err, '锁定失败'), 'error')
     }
   }
 
@@ -332,9 +352,9 @@ export default function App(): React.JSX.Element {
       )}
 
       {toast && (
-        <div className="toast">
-          <Icon name="check" size={14} />
-          {toast}
+        <div className={`toast ${toast.type === 'error' ? 'toast-error' : ''}`} role="status">
+          <Icon name={toast.type === 'error' ? 'alert-triangle' : 'check'} size={14} />
+          {toast.message}
         </div>
       )}
     </div>

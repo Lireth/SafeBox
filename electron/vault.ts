@@ -92,8 +92,7 @@ export class VaultStore {
       createdAt: now,
       updatedAt: now
     }
-    this.entries.push(entry)
-    this.save()
+    this.commit([...this.entries, entry])
     return entry
   }
 
@@ -106,25 +105,47 @@ export class VaultStore {
       favorite: draft.favorite === true,
       updatedAt: Date.now()
     }
-    this.entries[index] = updated
-    this.save()
+    const next = [...this.entries]
+    next[index] = updated
+    this.commit(next)
     return updated
   }
 
   remove(id: string): void {
-    const before = this.entries.length
-    this.entries = this.entries.filter((e) => e.id !== id)
-    if (this.entries.length === before) throw new Error('账号不存在')
-    this.save()
+    const next = this.entries.filter((e) => e.id !== id)
+    if (next.length === this.entries.length) throw new Error('账号不存在')
+    this.commit(next)
   }
 
   toggleFavorite(id: string): AccountEntry {
-    const entry = this.entries.find((e) => e.id === id)
-    if (!entry) throw new Error('账号不存在')
-    entry.favorite = !entry.favorite
-    entry.updatedAt = Date.now()
-    this.save()
-    return entry
+    const index = this.entries.findIndex((e) => e.id === id)
+    if (index === -1) throw new Error('账号不存在')
+    const updated: AccountEntry = {
+      ...this.entries[index],
+      favorite: !this.entries[index].favorite,
+      updatedAt: Date.now()
+    }
+    const next = [...this.entries]
+    next[index] = updated
+    this.commit(next)
+    return updated
+  }
+
+  /**
+   * 统一写入入口：应用内存变更并持久化。
+   * 写盘失败时回滚内存到变更前状态，保证内存与磁盘始终一致，
+   * 避免后续操作基于「假成功」状态扩大不一致。
+   * （要求所有变更以不可变方式构造 next 数组，不原地修改旧对象）
+   */
+  private commit(next: AccountEntry[]): void {
+    const previous = this.entries
+    this.entries = next
+    try {
+      this.save()
+    } catch (err) {
+      this.entries = previous
+      throw err
+    }
   }
 
   /** 加密并原子写入磁盘（临时文件 + 重命名），并轮换保留最近备份 */
