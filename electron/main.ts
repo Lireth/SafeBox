@@ -41,16 +41,31 @@ function createMainWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  store.load()
-  registerIpcHandlers(store)
-  createMainWindow()
-
-  app.on('activate', () => {
-    // macOS: 点击 Dock 图标时若无窗口则重建
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+// 单实例锁：第二个实例立即退出，防止多实例并发写入 vault.safebox 导致数据覆盖
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  // 第二实例尝试启动时，聚焦并还原已有窗口
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.show()
+      win.focus()
+    }
   })
-})
+
+  app.whenReady().then(() => {
+    store.load()
+    registerIpcHandlers(store)
+    createMainWindow()
+
+    app.on('activate', () => {
+      // macOS: 点击 Dock 图标时若无窗口则重建
+      if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   // Windows / Linux: 关闭所有窗口即退出
