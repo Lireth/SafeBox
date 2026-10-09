@@ -20,6 +20,7 @@ const EMPTY_FORM: EntryDraft = {
   password: '',
   notes: '',
   favorite: false,
+  totpSecret: '',
 }
 
 const DEFAULT_GENERATOR = { length: 16, upper: true, lower: true, digits: true, symbols: true }
@@ -209,6 +210,19 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
             <p className="gen-hint">生成结果已写入上方密码框，可点击眼睛图标查看</p>
           </div>
         )}
+
+        <label className="field-label" htmlFor="entry-totp">
+          双因素验证（TOTP，可选）
+        </label>
+        <input
+          id="entry-totp"
+          className="input mono"
+          type="text"
+          placeholder="otpauth:// 链接或 Base32 秘钥"
+          value={form.totpSecret ?? ''}
+          onChange={(e) => patch({ totpSecret: e.target.value })}
+        />
+        <p className="gen-hint">留空表示不启用；保存后将在详情页动态显示 6 位验证码</p>
 
         <label className="field-label" htmlFor="entry-notes">
           备注

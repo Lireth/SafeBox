@@ -267,6 +267,55 @@ describe('VaultStore', () => {
     })
   })
 
+  describe('TOTP 秘钥存储', () => {
+    it('裸 Base32 规范化存储（大写、去空格与填充）', () => {
+      const created = store.add(draft({ totpSecret: 'abcd 2345 abcd' }))
+      expect(created.totpSecret).toBe('ABCD2345ABCD')
+    })
+
+    it('otpauth:// 链接提取 secret 参数存储', () => {
+      const created = store.add(draft({ totpSecret: 'otpauth://totp/GitHub:me?secret=abcd2345abcd2345&issuer=GitHub' }))
+      expect(created.totpSecret).toBe('ABCD2345ABCD2345')
+    })
+
+    it('空值与纯空白不产生字段', () => {
+      expect(store.add(draft()).totpSecret).toBeUndefined()
+      expect(store.add(draft({ totpSecret: '   ' })).totpSecret).toBeUndefined()
+    })
+
+    it('非法秘钥拒绝', () => {
+      expect(() => store.add(draft({ totpSecret: 'otpauth://hotp/x?secret=ABCD2345ABCD' }))).toThrow('仅支持 totp 类型')
+      expect(() => store.add(draft({ totpSecret: 'otpauth://totp/x?issuer=Y' }))).toThrow('缺少 secret')
+      expect(() => store.add(draft({ totpSecret: 'ABCD234!' }))).toThrow('Base32')
+      expect(() => store.add(draft({ totpSecret: 'AB1' }))).toThrow('过短')
+      expect(() => store.add(draft({ totpSecret: 123 as unknown as string }))).toThrow('TOTP 秘钥格式错误')
+    })
+
+    it('update 可清除或替换 totpSecret', () => {
+      const created = store.add(draft({ totpSecret: 'ABCD2345ABCD' }))
+      expect(store.update(created.id, draft()).totpSecret).toBeUndefined()
+      const again = store.update(created.id, draft({ totpSecret: 'otpauth://totp/x?secret=efff2345efff2345' }))
+      expect(again.totpSecret).toBe('EFFF2345EFFF2345')
+    })
+
+    it('秘钥落盘受整体加密保护，密文中不可见明文', () => {
+      store.add(draft({ totpSecret: 'ABCD2345ABCD2345' }))
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, 'vault.safebox'), 'utf-8'))
+      expect(meta.encrypted).toBe(true)
+      // base64 密文不包含秘钥明文
+      expect(meta.payload).not.toContain('ABCD2345ABCD2345')
+    })
+
+    it('mergeEntries 保留备份中的 totpSecret 并校验非法值', () => {
+      const base = { title: 'B', category: 'dev', url: '', username: '', password: '', notes: '', favorite: false }
+      store.mergeEntries([{ ...base, id: 't1', createdAt: 1, updatedAt: 2, totpSecret: 'abcd2345abcd2345' }])
+      expect(store.list()[0].totpSecret).toBe('ABCD2345ABCD2345')
+      expect(() =>
+        store.mergeEntries([{ ...base, id: 't2', createdAt: 1, updatedAt: 2, totpSecret: '!!!' }]),
+      ).toThrow('Base32')
+    })
+  })
+
   /** 以明文形式写入数据文件（绕过加密，模拟旧版本磁盘内容） */
   function writeRawStore(dir: string, entries: unknown[], version = 3): void {
     const meta = {

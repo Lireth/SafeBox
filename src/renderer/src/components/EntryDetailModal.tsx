@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
+import { TOTP_PERIOD_SECONDS, totpCode, totpRemainingSeconds } from '../lib/totp'
 import type { AccountEntry } from '../../../../shared/types'
 
 interface EntryDetailModalProps {
@@ -137,6 +138,13 @@ export function EntryDetailModal({
             <span className="detail-value prewrap">{entry.notes}</span>
           </div>
         )}
+
+        {entry.totpSecret && (
+          <div className="detail-field">
+            <span className="detail-label">双因素验证码</span>
+            <TOTPDisplay secret={entry.totpSecret} onCopy={onCopy} />
+          </div>
+        )}
       </div>
 
       <div className="modal-actions">
@@ -155,5 +163,74 @@ export function EntryDetailModal({
         </div>
       </div>
     </Modal>
+  )
+}
+
+/** TOTP 验证码展示：6 位码值 + 30 秒倒计时环 + 一键复制（每秒本地重算，零网络） */
+function TOTPDisplay({
+  secret,
+  onCopy,
+}: {
+  secret: string
+  onCopy: (text: string, label: string) => void
+}): React.JSX.Element {
+  // 时间快照与码值同帧更新，避免窗口边界处码值与倒计时短暂错位
+  const [state, setState] = useState<{ now: number; code: string | null }>({ now: 0, code: null })
+
+  useEffect(() => {
+    let cancelled = false
+    function tick(): void {
+      void totpCode(secret)
+        .then((code) => {
+          if (!cancelled) setState({ now: Date.now(), code })
+        })
+        .catch(() => {
+          if (!cancelled) setState({ now: Date.now(), code: null })
+        })
+    }
+    tick()
+    const timer = window.setInterval(tick, 1000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [secret])
+
+  const remaining = state.now ? totpRemainingSeconds(state.now) : TOTP_PERIOD_SECONDS
+  const radius = 8
+  const circumference = 2 * Math.PI * radius
+  const urgent = remaining <= 5
+
+  return (
+    <div className="totp-display">
+      <svg
+        className={`totp-ring ${urgent ? 'is-urgent' : ''}`}
+        width="22"
+        height="22"
+        viewBox="0 0 22 22"
+        aria-hidden="true"
+      >
+        <circle cx="11" cy="11" r={radius} fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+        <circle
+          cx="11"
+          cy="11"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - remaining / TOTP_PERIOD_SECONDS)}
+          transform="rotate(-90 11 11)"
+        />
+      </svg>
+      <span className="detail-value mono totp-code">{state.code ? `${state.code.slice(0, 3)} ${state.code.slice(3)}` : '••• •••'}</span>
+      <span className="totp-remaining">{state.now ? `${remaining}s` : ''}</span>
+      {state.code && (
+        <button type="button" className="icon-btn" title="复制验证码" onClick={() => onCopy(state.code as string, '验证码已复制')}>
+          <Icon name="copy" size={15} />
+        </button>
+      )}
+    </div>
   )
 }

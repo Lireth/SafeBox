@@ -19,7 +19,8 @@ export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 /**
  * 数据磁盘文件结构。
  * version 历史：v1 主密码加密（已废弃，读取失败走 broken 备份）；v2 safeStorage 加密；
- * v3 条目支持软删除（deletedAt）。v2/v3 结构兼容：v2 条目无 deletedAt 视为未删除，
+ * v3 条目支持软删除（deletedAt）；v4 条目支持 TOTP 秘钥（totpSecret）。
+ * v2/v3/v4 结构向后兼容：新增字段均可选且缺省视为未启用，
  * 因此 load() 不做版本拦截，旧文件升级无缝兼容。
  */
 interface StoreFile {
@@ -237,9 +238,9 @@ export class VaultStore {
     const json = JSON.stringify({ entries: this.entries, savedAt: Date.now() } satisfies StorePayload)
     let meta: StoreFile
     if (safeStorage.isEncryptionAvailable()) {
-      meta = { version: 3, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
+      meta = { version: 4, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
     } else {
-      meta = { version: 3, encrypted: false, payload: json }
+      meta = { version: 4, encrypted: false, payload: json }
     }
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(meta), 'utf-8')
@@ -307,7 +308,45 @@ function normalizeDraft(draft: EntryDraft): Omit<AccountEntry, 'id' | 'favorite'
     username: str(draft.username, 200, '用户名'),
     password: typeof draft.password === 'string' ? draft.password.slice(0, 500) : '',
     notes: str(draft.notes, 2000, '备注'),
+    // TOTP 秘钥规范化为 Base32 后存储（支持 otpauth:// 链接与裸 Base32）
+    totpSecret: normalizeTotp(draft.totpSecret),
   }
+}
+
+/**
+ * TOTP 秘钥存储侧规范化：otpauth:// 链接提取 secret 参数，裸 Base32 做字符集校验。
+ * 返回规范化 Base32（大写、无填充）；空输入返回 undefined。
+ * 与渲染端 lib/totp.ts 的 parseTOTPSecret 保持一致（渲染端为完整实现，此处为存储校验）。
+ */
+function normalizeTotp(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  if (typeof raw !== 'string') throw new Error('TOTP 秘钥格式错误')
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  if (trimmed.length > 500) throw new Error('TOTP 秘钥过长')
+
+  if (trimmed.toLowerCase().startsWith('otpauth://')) {
+    let secret: string | null
+    try {
+      const url = new URL(trimmed)
+      if (url.protocol !== 'otpauth:' || url.host.toLowerCase() !== 'totp') throw new Error('bad type')
+      secret = url.searchParams.get('secret')
+    } catch {
+      throw new Error('otpauth 链接格式错误（仅支持 totp 类型）')
+    }
+    if (!secret) throw new Error('otpauth 链接缺少 secret 参数')
+    return assertBase32(secret)
+  }
+  return assertBase32(trimmed)
+}
+
+/** Base32 校验与规范化（存储侧） */
+function assertBase32(raw: string): string {
+  const compact = raw.replace(/[\s-]/g, '').replace(/=+$/, '').toUpperCase()
+  if (compact.length < 8) throw new Error('TOTP 秘钥过短（至少 8 个 Base32 字符）')
+  if (compact.length > 128) throw new Error('TOTP 秘钥过长')
+  if (!/^[A-Z2-7]+$/.test(compact)) throw new Error('TOTP 秘钥不是有效的 Base32（仅允许 A-Z 和 2-7）')
+  return compact
 }
 
 // 与渲染端 categories 保持一致，仅用于服务端校验

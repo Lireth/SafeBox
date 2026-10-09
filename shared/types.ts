@@ -26,11 +26,15 @@ export interface AccountEntry {
   updatedAt: number
   /** 软删除时间戳；缺省 / undefined 视为未删除（兼容旧版本数据文件） */
   deletedAt?: number
+  /** TOTP 双因素秘钥（规范化 Base32）；缺省表示未启用双因素 */
+  totpSecret?: string
 }
 
 /** 新增 / 编辑时由渲染端提交的数据 */
 export type EntryDraft = Pick<AccountEntry, 'title' | 'category' | 'url' | 'username' | 'password' | 'notes'> & {
   favorite?: boolean
+  /** TOTP 秘钥原始输入：otpauth:// 链接或裸 Base32，落盘前由主进程规范化 */
+  totpSecret?: string
 }
 
 /** 应用数据加载状态（broken 时渲染端展示持久警示条） */
