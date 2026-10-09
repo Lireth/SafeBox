@@ -2,13 +2,16 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { safeStorage } from 'electron'
-import type { AccountEntry, EntryDraft } from './api'
+import type { AccountEntry, EntryDraft, LoadStatus } from './api'
 
 /**
  * 本地数据存储：无启动密码，应用启动即加载。
  * 落盘时优先使用系统级加密（Windows DPAPI / macOS Keychain），
  * 系统加密不可用时降级为明文 JSON。
  */
+
+/** 保存时保留的轮换备份份数 */
+const MAX_BACKUPS = 3
 
 /** 数据磁盘文件结构 */
 interface StoreFile {
@@ -28,13 +31,20 @@ interface StorePayload {
 export class VaultStore {
   private readonly file: string
   private entries: AccountEntry[] = []
+  private lastLoadResult: LoadStatus = { status: 'empty' }
 
   constructor(userDataDir: string) {
     this.file = path.join(userDataDir, 'vault.safebox')
   }
 
+  /** 启动加载状态（broken 表示文件损坏已备份，供 UI 展示警示） */
+  getLoadStatus(): LoadStatus {
+    return this.lastLoadResult
+  }
+
   /** 应用启动时加载数据（只需调用一次） */
   load(): void {
+    this.lastLoadResult = { status: 'empty' }
     if (!fs.existsSync(this.file)) return
     try {
       const meta = JSON.parse(fs.readFileSync(this.file, 'utf-8')) as StoreFile
@@ -49,14 +59,18 @@ export class VaultStore {
       }
       const data = JSON.parse(json) as StorePayload
       this.entries = Array.isArray(data.entries) ? data.entries : []
+      this.lastLoadResult = { status: 'ok' }
     } catch {
-      // 旧版本主密码加密文件或损坏文件：备份后从空数据开始，保证应用可用
+      // 旧版本主密码加密文件或损坏文件：备份后从空数据开始，并向上报告以便 UI 警示
+      const backupName = `${path.basename(this.file)}.broken-${Date.now()}`
       try {
-        fs.renameSync(this.file, `${this.file}.broken-${Date.now()}`)
+        fs.renameSync(this.file, path.join(path.dirname(this.file), backupName))
       } catch {
         // 备份失败也不阻塞启动
       }
       this.entries = []
+      this.lastLoadResult = { status: 'broken', backupFile: backupName }
+      console.warn(`[vault] 数据文件解析失败，已备份为 ${backupName}，本次从空数据启动`)
     }
   }
 
@@ -108,7 +122,7 @@ export class VaultStore {
     return entry
   }
 
-  /** 加密并原子写入磁盘（临时文件 + 重命名） */
+  /** 加密并原子写入磁盘（临时文件 + 重命名），并轮换保留最近备份 */
   private save(): void {
     const json = JSON.stringify({ entries: this.entries, savedAt: Date.now() } satisfies StorePayload)
     let meta: StoreFile
@@ -119,7 +133,43 @@ export class VaultStore {
     }
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(meta), 'utf-8')
+    // 覆盖前将上一份完好数据复制为 .bak，降低误写导致的数据丢失风险
+    this.backupCurrent()
     fs.renameSync(tmp, this.file)
+    this.rotateBackups()
+  }
+
+  /** 将当前数据文件复制为带时间戳的 .bak 备份 */
+  private backupCurrent(): void {
+    try {
+      if (fs.existsSync(this.file)) {
+        fs.copyFileSync(this.file, `${this.file}.bak-${Date.now()}`)
+      }
+    } catch {
+      // 备份失败不阻塞保存
+    }
+  }
+
+  /** 仅保留最近 MAX_BACKUPS 份 .bak 备份，超出部分按时间删除 */
+  private rotateBackups(): void {
+    try {
+      const dir = path.dirname(this.file)
+      const base = path.basename(this.file)
+      const baks = fs
+        .readdirSync(dir)
+        .filter((name) => name.startsWith(`${base}.bak-`))
+        .map((name) => ({ name, mtime: fs.statSync(path.join(dir, name)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime)
+      for (const item of baks.slice(MAX_BACKUPS)) {
+        try {
+          fs.unlinkSync(path.join(dir, item.name))
+        } catch {
+          // 单个备份删除失败可忽略
+        }
+      }
+    } catch {
+      // 轮换失败不影响主流程
+    }
   }
 }
 

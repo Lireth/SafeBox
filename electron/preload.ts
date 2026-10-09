@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountEntry, EntryDraft, SafeBoxAPI } from './api'
+import type { AccountEntry, EntryDraft, LoadStatus, SafeBoxAPI } from './api'
 
 // ============================================================
 // 预加载端实现
@@ -15,7 +15,9 @@ const INVOKE_CHANNELS = new Set([
   'entries:delete',
   'entries:toggle-favorite',
   'clipboard:copy',
-  'app:open-external'
+  'app:open-external',
+  'app:load-status',
+  'app:open-data-dir'
 ])
 
 /** invoke 封装：白名单校验 + 还原主进程抛出的真实错误信息 */
@@ -35,12 +37,14 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 
 export const electronAPI: SafeBoxAPI = {
   listEntries: () => invoke<AccountEntry[]>('entries:list'),
+  getLoadStatus: () => invoke<LoadStatus>('app:load-status'),
   addEntry: (draft) => invoke<AccountEntry>('entries:add', draft),
   updateEntry: (id, draft) => invoke<AccountEntry>('entries:update', id, draft),
   deleteEntry: (id) => invoke('entries:delete', id),
   toggleFavorite: (id) => invoke<AccountEntry>('entries:toggle-favorite', id),
   copyText: (text) => invoke('clipboard:copy', text),
-  openExternal: (url) => invoke('app:open-external', url)
+  openExternal: (url) => invoke('app:open-external', url),
+  openDataDir: () => invoke('app:open-data-dir')
 }
 
 export type ElectronAPI = SafeBoxAPI

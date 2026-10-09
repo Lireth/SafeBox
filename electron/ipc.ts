@@ -1,4 +1,4 @@
-import { clipboard, ipcMain, shell } from 'electron'
+import { app, clipboard, ipcMain, shell } from 'electron'
 import type { EntryDraft } from './api'
 import { VaultStore } from './vault'
 
@@ -6,6 +6,16 @@ import { VaultStore } from './vault'
 const CLIPBOARD_CLEAR_MS = 30 * 1000
 
 export function registerIpcHandlers(store: VaultStore): void {
+  // ---- 应用状态 ----
+
+  ipcMain.handle('app:load-status', () => store.getLoadStatus())
+
+  ipcMain.handle('app:open-data-dir', async () => {
+    // 返回空字符串表示成功，否则为平台错误信息
+    const error = await shell.openPath(app.getPath('userData'))
+    if (error) throw new Error(`无法打开数据目录: ${error}`)
+  })
+
   // ---- 账号 CRUD ----
 
   ipcMain.handle('entries:list', () => store.list())

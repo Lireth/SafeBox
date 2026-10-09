@@ -16,6 +16,8 @@ interface FormTarget {
 export default function App(): React.JSX.Element {
   const [ready, setReady] = useState(false)
   const [entries, setEntries] = useState<AccountEntry[]>([])
+  /** 非 null 表示数据文件损坏已备份，展示持久警示条（值为备份文件名） */
+  const [loadWarning, setLoadWarning] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
@@ -24,7 +26,7 @@ export default function App(): React.JSX.Element {
   const [toast, setToast] = useState('')
   const toastTimer = useRef<number | undefined>(undefined)
 
-  // 启动即加载账号数据
+  // 启动即加载账号数据与加载状态
   useEffect(() => {
     let cancelled = false
     void window.safebox
@@ -38,6 +40,17 @@ export default function App(): React.JSX.Element {
       .catch(() => {
         if (!cancelled) setReady(true)
       })
+    void window.safebox
+      .getLoadStatus()
+      .then((status) => {
+        if (cancelled) return
+        if (status.status === 'broken' && status.backupFile) {
+          // 生产环境留痕：数据异常必须在日志可见
+          console.error(`[SafeBox] 数据文件解析失败，已自动备份为 ${status.backupFile}`)
+          setLoadWarning(status.backupFile)
+        }
+      })
+      .catch(() => {})
     return () => {
       cancelled = true
     }
@@ -126,6 +139,28 @@ export default function App(): React.JSX.Element {
       />
 
       <main className="main">
+        {loadWarning && (
+          <div className="load-warning" role="alert">
+            <Icon name="alert-triangle" size={18} className="load-warning-icon" />
+            <div className="load-warning-text">
+              <strong>数据文件解析失败</strong>
+              <span>
+                已自动备份为 {loadWarning}，当前从空数据开始。请先在数据目录中处理备份文件，勿直接重新录入。
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost load-warning-action"
+              onClick={() => void window.safebox.openDataDir()}
+            >
+              打开数据目录
+            </button>
+            <button type="button" className="icon-btn" aria-label="关闭警示" onClick={() => setLoadWarning(null)}>
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        )}
+
         <header className="main-header">
           <div className="main-heading">
             <h1 className="main-title">{headerLabel}</h1>
