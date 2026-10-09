@@ -129,6 +129,89 @@ describe('LockManager', () => {
     })
   })
 
+  describe('解锁暴力破解防护（指数退避）', () => {
+    /** 锁定并连续失败 n 次，返回各次错误消息 */
+    function failNTimes(n: number): string[] {
+      const messages: string[] = []
+      for (let i = 0; i < n; i++) {
+        try {
+          lock.unlock('000000', store)
+        } catch (err) {
+          messages.push(err instanceof Error ? err.message : '')
+        }
+      }
+      return messages
+    }
+
+    function lockWithPin(): void {
+      lock.setupPin(undefined, '123456')
+      lock.lock(store)
+    }
+
+    it('前 4 次失败提示「PIN 不正确」，第 5 次触发 30 秒退避', () => {
+      lockWithPin()
+      const messages = failNTimes(5)
+      expect(messages.slice(0, 4)).toEqual(Array(4).fill('PIN 不正确'))
+      expect(messages[4]).toContain('失败次数过多')
+      expect(messages[4]).toContain('30 秒')
+    })
+
+    it('冷却期内即使提交正确 PIN 也被拒绝且不解锁', () => {
+      lockWithPin()
+      failNTimes(5)
+      expect(() => lock.unlock('123456', store)).toThrow('请')
+      expect(lock.isLocked).toBe(true)
+    })
+
+    it('连续失败翻倍退避（第 6 次 60 秒），冷却期正确 PIN 也被拒', () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      lockWithPin()
+      failNTimes(5) // 30s
+      // 冷却期内尝试不消耗退避计数
+      try {
+        lock.unlock('000000', store)
+      } catch {
+        /* 冷却拒绝 */
+      }
+      vi.advanceTimersByTime(30_001)
+      failNTimes(1) // 第 6 次真实失败 → 60s
+      expect(() => lock.unlock('123456', store)).toThrow('60 秒后重试')
+      vi.advanceTimersByTime(60_001)
+      // 冷却到期后正确 PIN 解锁成功
+      lock.unlock('123456', store)
+      expect(lock.isLocked).toBe(false)
+      vi.useRealTimers()
+    })
+
+    it('成功解锁重置失败计数', () => {
+      lockWithPin()
+      failNTimes(4)
+      lock.unlock('123456', store)
+      // 重新锁定后配额重置：再失败 4 次不触发退避
+      lock.lock(store)
+      const messages = failNTimes(4)
+      expect(messages[3]).toBe('PIN 不正确')
+    })
+
+    it('退避翻倍封顶 5 分钟（第 9 次失败为 300 秒）', () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      lockWithPin()
+      // 依次经历 30/60/120/240 秒退避，第 9 次失败按 480 秒计算但封顶 300 秒
+      const steps = [30_001, 60_001, 120_001, 240_001]
+      failNTimes(5) // 第 5 次 → 30s
+      for (const ms of steps) {
+        vi.advanceTimersByTime(ms)
+        failNTimes(1)
+      }
+      expect(() => lock.unlock('000000', store)).toThrow('请 300 秒后重试')
+      vi.advanceTimersByTime(300_001)
+      // 封顶后继续失败保持 300 秒，不再增长
+      failNTimes(1)
+      expect(() => lock.unlock('000000', store)).toThrow('请 300 秒后重试')
+      vi.useRealTimers()
+    })
+  })
+
   describe('系统空闲自动锁定', () => {
     function startMonitor(): void {
       lock.setupPin(undefined, '123456')

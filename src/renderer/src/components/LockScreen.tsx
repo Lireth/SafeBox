@@ -12,13 +12,22 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [failCount, setFailCount] = useState(0)
+  /** 主进程退避提示中解析出的剩余冷却秒数（>0 时禁用提交并本地倒计时） */
+  const [cooldown, setCooldown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => inputRef.current?.focus(), [])
 
+  // 冷却倒计时：本地每秒递减，归零恢复提交（主进程侧仍有权威校验）
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const timer = window.setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000)
+    return () => window.clearInterval(timer)
+  }, [cooldown])
+
   async function handleUnlock(e: React.FormEvent): Promise<void> {
     e.preventDefault()
-    if (!pin || busy) return
+    if (!pin || busy || cooldown > 0) return
     setBusy(true)
     setError('')
     try {
@@ -29,6 +38,11 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
       setError(message)
       setFailCount((n) => n + 1)
       setPin('')
+      // 从「请 N 秒后重试」/「已锁定 N 秒」文案解析退避时长，进入本地倒计时
+      const match = message.match(/(\d+)\s*秒/)
+      if (message.includes('失败次数过多') && match) {
+        setCooldown(parseInt(match[1], 10) || 30)
+      }
       setBusy(false)
       inputRef.current?.focus()
     }
@@ -55,8 +69,8 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
         />
         {error && <p className="form-error lock-error">{error}</p>}
         {failCount >= 2 && !error && <p className="lock-subtitle lock-fails">已连续失败 {failCount} 次</p>}
-        <button type="submit" className="btn btn-primary btn-block" disabled={!pin || busy}>
-          {busy ? '验证中…' : '解锁'}
+        <button type="submit" className="btn btn-primary btn-block" disabled={!pin || busy || cooldown > 0}>
+          {cooldown > 0 ? `请 ${cooldown} 秒后重试` : busy ? '验证中…' : '解锁'}
         </button>
       </form>
     </div>
