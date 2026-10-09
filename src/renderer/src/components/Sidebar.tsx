@@ -31,6 +31,7 @@ export function Sidebar({ entries, filter, query, onFilterChange, onQueryChange,
 
   const renderItem = (id: FilterId, label: string, icon: React.ReactNode, count: number): React.JSX.Element => (
     <button
+      key={id}
       type="button"
       className={`nav-item ${filter === id ? 'active' : ''}`}
       onClick={() => onFilterChange(id)}
