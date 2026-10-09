@@ -25,6 +25,11 @@ interface ToastState {
   message: string
 }
 
+interface LoadWarning {
+  title: string
+  detail: string
+}
+
 /** 错误消息提取：IPC 报错还原主进程真实信息 */
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback
@@ -33,8 +38,8 @@ function errorMessage(err: unknown, fallback: string): string {
 export default function App(): React.JSX.Element {
   const [ready, setReady] = useState(false)
   const [entries, setEntries] = useState<AccountEntry[]>([])
-  /** 非 null 表示数据文件损坏已备份，展示持久警示条（值为备份文件名） */
-  const [loadWarning, setLoadWarning] = useState<string | null>(null)
+  /** 非 null 表示数据文件异常（整体损坏或含坏条目），展示持久警示条 */
+  const [loadWarning, setLoadWarning] = useState<LoadWarning | null>(null)
   const [locked, setLocked] = useState(false)
   const [pinEnabled, setPinEnabled] = useState(false)
   const [pinModalOpen, setPinModalOpen] = useState(false)
@@ -77,7 +82,16 @@ export default function App(): React.JSX.Element {
         if (status.status === 'broken' && status.backupFile) {
           // 生产环境留痕：数据异常必须在日志可见
           console.error(`[SafeBox] 数据文件解析失败，已自动备份为 ${status.backupFile}`)
-          setLoadWarning(status.backupFile)
+          setLoadWarning({
+            title: '数据文件解析失败',
+            detail: `已自动备份为 ${status.backupFile}，当前从空数据开始。请先在数据目录中处理备份文件，勿直接重新录入。`,
+          })
+        } else if (status.status === 'repaired') {
+          console.error(`[SafeBox] 数据文件含 ${status.skipped ?? 0} 条损坏条目，已自动跳过`)
+          setLoadWarning({
+            title: '部分账号数据损坏',
+            detail: `已自动跳过 ${status.skipped ?? 0} 条格式损坏的账号，其余账号可正常访问。如发现有账号缺失，请检查数据目录中的历史备份。`,
+          })
         }
       })
       .catch(() => {})
@@ -423,8 +437,8 @@ export default function App(): React.JSX.Element {
           <div className="load-warning" role="alert">
             <Icon name="alert-triangle" size={18} className="load-warning-icon" />
             <div className="load-warning-text">
-              <strong>数据文件解析失败</strong>
-              <span>已自动备份为 {loadWarning}，当前从空数据开始。请先在数据目录中处理备份文件，勿直接重新录入。</span>
+              <strong>{loadWarning.title}</strong>
+              <span>{loadWarning.detail}</span>
             </div>
             <button
               type="button"

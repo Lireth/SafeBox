@@ -37,11 +37,19 @@ export type EntryDraft = Pick<AccountEntry, 'title' | 'category' | 'url' | 'user
   totpSecret?: string
 }
 
-/** 应用数据加载状态（broken 时渲染端展示持久警示条） */
+/** 应用数据加载状态（broken/repaired 时渲染端展示持久警示条） */
 export interface LoadStatus {
-  status: 'ok' | 'empty' | 'broken'
+  /**
+   * - ok：正常加载
+   * - empty：无数据文件
+   * - broken：整体文件损坏/无法解密，已备份后从空数据开始
+   * - repaired：文件可解析，但含格式非法的条目，已跳过坏条目、保留好条目
+   */
+  status: 'ok' | 'empty' | 'broken' | 'repaired'
   /** status=broken 时，损坏文件的自动备份文件名（位于用户数据目录） */
   backupFile?: string
+  /** status=repaired 时，被跳过的损坏条目数 */
+  skipped?: number
 }
 
 /** 应用锁定状态 */

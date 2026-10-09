@@ -72,8 +72,23 @@ export class VaultStore {
         json = meta.payload
       }
       const data = JSON.parse(json) as StorePayload
-      this.entries = Array.isArray(data.entries) ? data.entries : []
-      this.lastLoadResult = { status: 'ok' }
+      const rawEntries = Array.isArray(data.entries) ? data.entries : []
+      // 逐条校验：磁盘文件可能因外部篡改或历史缺陷含格式非法条目，
+      // 跳过坏条目以免击穿渲染端（如 title.charAt / f.toLowerCase 抛错），保留好条目
+      const valid: AccountEntry[] = []
+      let skipped = 0
+      for (const raw of rawEntries) {
+        const entry = normalizeEntry(raw)
+        if (entry) valid.push(entry)
+        else skipped++
+      }
+      this.entries = valid
+      if (skipped > 0) {
+        this.lastLoadResult = { status: 'repaired', skipped }
+        console.warn(`[vault] 数据文件含 ${skipped} 条格式非法条目，已跳过并保留其余 ${valid.length} 条`)
+      } else {
+        this.lastLoadResult = { status: 'ok' }
+      }
     } catch {
       // 旧版本主密码加密文件或损坏文件：备份后从空数据开始，并向上报告以便 UI 警示
       const backupName = `${path.basename(this.file)}.broken-${Date.now()}`
@@ -282,6 +297,46 @@ export class VaultStore {
       // 轮换失败不影响主流程
     }
   }
+}
+
+/**
+ * 读取侧逐条校验磁盘条目：必备字段类型不符的坏条目返回 null（由 load() 跳过计数）。
+ * 与写入侧 normalizeDraft 互补：写入拒绝非法输入，读取容忍历史/外部损坏数据。
+ * 可选字段（deletedAt/totpSecret）非法时仅清除该字段，不连坐整条记录。
+ */
+function normalizeEntry(raw: unknown): AccountEntry | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const e = raw as Record<string, unknown>
+  const isStr = (v: unknown): v is string => typeof v === 'string'
+  if (
+    !isStr(e.id) ||
+    !isStr(e.title) ||
+    !isStr(e.category) ||
+    !isStr(e.url) ||
+    !isStr(e.username) ||
+    !isStr(e.password) ||
+    !isStr(e.notes) ||
+    typeof e.favorite !== 'boolean' ||
+    typeof e.createdAt !== 'number' ||
+    typeof e.updatedAt !== 'number'
+  ) {
+    return null
+  }
+  const entry: AccountEntry = {
+    id: e.id,
+    title: e.title,
+    category: CATEGORY_IDS.includes(e.category) ? e.category : 'other',
+    url: e.url,
+    username: e.username,
+    password: e.password,
+    notes: e.notes,
+    favorite: e.favorite,
+    createdAt: e.createdAt,
+    updatedAt: e.updatedAt,
+  }
+  if (typeof e.deletedAt === 'number') entry.deletedAt = e.deletedAt
+  if (isStr(e.totpSecret) && e.totpSecret) entry.totpSecret = e.totpSecret
+  return entry
 }
 
 /** 校验并规范化渲染进程提交的账号数据 */

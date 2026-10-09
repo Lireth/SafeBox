@@ -373,4 +373,96 @@ describe('VaultStore', () => {
       expect(store.toggleFavorite(t2.id).favorite).toBe(true)
     })
   })
+
+  /** 构造一条字段类型合法的磁盘条目 */
+  function validEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'e1',
+      title: 'GitHub',
+      category: 'dev',
+      url: '',
+      username: 'u',
+      password: 'p',
+      notes: '',
+      favorite: false,
+      createdAt: 1,
+      updatedAt: 2,
+      ...overrides,
+    }
+  }
+
+  describe('load() 逐条数据校验（读取侧损坏防护）', () => {
+    it('坏条目被跳过，好条目保留，上报 repaired 状态与计数', () => {
+      writeRawStore(tmpDir, [
+        validEntry({ id: 'good1' }),
+        validEntry({ id: 'bad-title', title: { nested: 'obj' } }),
+        validEntry({ id: 'bad-fav', favorite: 'yes' }),
+        validEntry({ id: 'good2', title: '邮箱' }),
+        'not-an-object',
+      ])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'repaired', skipped: 3 })
+      const list = reloaded.list()
+      expect(list.map((e) => e.id)).toEqual(['good1', 'good2'])
+      expect(list[0].title).toBe('GitHub')
+    })
+
+    it('全部条目合法时上报 ok，不误报 repaired', () => {
+      writeRawStore(tmpDir, [validEntry(), validEntry({ id: 'e2', title: 'B' })])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      expect(reloaded.list()).toHaveLength(2)
+    })
+
+    it('必备字段缺失（如无 id/createdAt）判为坏条目', () => {
+      const missingId = validEntry()
+      delete missingId.id
+      const missingTs = validEntry({ id: 'e3' })
+      delete missingTs.createdAt
+      writeRawStore(tmpDir, [missingId, missingTs, validEntry({ id: 'ok' })])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'repaired', skipped: 2 })
+      expect(reloaded.list().map((e) => e.id)).toEqual(['ok'])
+    })
+
+    it('未知分类的合法条目归入 other 而非判坏', () => {
+      writeRawStore(tmpDir, [validEntry({ category: 'hacker' })])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      expect(reloaded.list()[0].category).toBe('other')
+    })
+
+    it('可选字段非法仅清除该字段，不连坐整条记录', () => {
+      // deletedAt 非数字 → 视为未删除；totpSecret 非字符串 → 丢弃秘钥；条目本身保留
+      writeRawStore(tmpDir, [
+        validEntry({ id: 'e1', deletedAt: 'oops', totpSecret: 123 }),
+      ])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      const entry = reloaded.list()[0]
+      expect(entry.deletedAt).toBeUndefined()
+      expect(entry.totpSecret).toBeUndefined()
+    })
+
+    it('合法 deletedAt 与 totpSecret 原样保留', () => {
+      writeRawStore(tmpDir, [validEntry({ id: 'e1', deletedAt: 999, totpSecret: 'ABCD2345' })])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.list()[0].deletedAt).toBe(999)
+      expect(reloaded.list()[0].totpSecret).toBe('ABCD2345')
+    })
+
+    it('entries 非数组时降级为空数据（ok，无跳过计数）', () => {
+      writeRawStore(tmpDir, undefined as unknown as unknown[])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      expect(reloaded.list()).toEqual([])
+    })
+  })
 })
