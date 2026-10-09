@@ -3,7 +3,7 @@ import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
 import { TOTP_PERIOD_SECONDS, totpCode, totpRemainingSeconds } from '../lib/totp'
-import type { AccountEntry } from '../../../../shared/types'
+import type { AccountEntry, PasswordHistoryItem } from '../../../../shared/types'
 
 interface EntryDetailModalProps {
   entry: AccountEntry
@@ -145,6 +145,10 @@ export function EntryDetailModal({
             <TOTPDisplay secret={entry.totpSecret} onCopy={onCopy} />
           </div>
         )}
+
+        {entry.passwordHistory && entry.passwordHistory.length > 0 && (
+          <PasswordHistorySection items={entry.passwordHistory} onCopy={onCopy} />
+        )}
       </div>
 
       <div className="modal-actions">
@@ -163,6 +167,65 @@ export function EntryDetailModal({
         </div>
       </div>
     </Modal>
+  )
+}
+
+/** 历史密码折叠区：默认收起，展开后逐条「显示/隐藏 + 复制」（单条独立超时隐藏） */
+function PasswordHistorySection({
+  items,
+  onCopy,
+}: {
+  items: PasswordHistoryItem[]
+  onCopy: (text: string, label: string) => void
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="history-section">
+      <button type="button" className="text-btn" onClick={() => setOpen((v) => !v)}>
+        <Icon name={open ? 'eye-off' : 'clock'} size={13} />
+        {open ? '收起历史密码' : `历史密码（${items.length}）`}
+      </button>
+      {open && (
+        <div className="history-list">
+          {items.map((item, index) => (
+            <HistoryRow key={`${item.changedAt}-${index}`} item={item} onCopy={onCopy} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** 单条历史密码行：默认掩码，点击显示 15 秒后自动隐藏 */
+function HistoryRow({
+  item,
+  onCopy,
+}: {
+  item: PasswordHistoryItem
+  onCopy: (text: string, label: string) => void
+}): React.JSX.Element {
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    if (!show) return
+    const timer = window.setTimeout(() => setShow(false), 15_000)
+    return () => window.clearTimeout(timer)
+  }, [show])
+  return (
+    <div className="history-row">
+      <span className="history-time">{formatTime(item.changedAt)}</span>
+      <span className="detail-value mono">{show ? item.password : '•'.repeat(Math.min(item.password.length, 12))}</span>
+      <button
+        type="button"
+        className="icon-btn"
+        title={show ? '隐藏' : '显示 15 秒'}
+        onClick={() => setShow((v) => !v)}
+      >
+        <Icon name={show ? 'eye-off' : 'eye'} size={14} />
+      </button>
+      <button type="button" className="icon-btn" title="复制" onClick={() => onCopy(item.password, '历史密码已复制')}>
+        <Icon name="copy" size={14} />
+      </button>
+    </div>
   )
 }
 

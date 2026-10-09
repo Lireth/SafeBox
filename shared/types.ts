@@ -6,6 +6,13 @@
 // 3. 渲染端不得从 electron/ 目录引入任何内容
 // ============================================================
 
+/** 一条历史密码记录（修改密码时保留旧值，供回查） */
+export interface PasswordHistoryItem {
+  password: string
+  /** 旧密码的失效时间（即本次修改发生的时间） */
+  changedAt: number
+}
+
 /** 一条账号记录 */
 export interface AccountEntry {
   id: string
@@ -28,6 +35,8 @@ export interface AccountEntry {
   deletedAt?: number
   /** TOTP 双因素秘钥（规范化 Base32）；缺省表示未启用双因素 */
   totpSecret?: string
+  /** 历史密码（最近 5 条，新→旧）；缺省表示从未修改过密码 */
+  passwordHistory?: PasswordHistoryItem[]
 }
 
 /** 新增 / 编辑时由渲染端提交的数据 */

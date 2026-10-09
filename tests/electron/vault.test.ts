@@ -491,4 +491,68 @@ describe('VaultStore', () => {
       expect(store.list()[0].totpSecret).toBe('ABCD2345ABCD2345')
     })
   })
+
+  describe('passwordHistory（密码修改历史）', () => {
+    it('修改密码时旧值压入历史（新→旧）', () => {
+      const created = store.add(draft({ title: 'A', password: 'p1' }))
+      store.update(created.id, draft({ title: 'A', password: 'p2' }))
+      store.update(created.id, draft({ title: 'A', password: 'p3' }))
+      const entry = store.list()[0]
+      expect(entry.password).toBe('p3')
+      expect(entry.passwordHistory).toHaveLength(2)
+      expect(entry.passwordHistory?.[0].password).toBe('p2')
+      expect(entry.passwordHistory?.[1].password).toBe('p1')
+    })
+
+    it('密码未变化 / 旧密码为空不产生历史', () => {
+      const created = store.add(draft({ title: 'A', password: 'same' }))
+      store.update(created.id, draft({ title: 'A', password: 'same', username: 'u' }))
+      expect(store.list()[0].passwordHistory).toBeUndefined()
+      const empty = store.add(draft({ title: 'B', password: '' }))
+      store.update(empty.id, draft({ title: 'B', password: 'first' }))
+      expect(store.list().find((e) => e.id === empty.id)?.passwordHistory).toBeUndefined()
+    })
+
+    it('超过 5 条时截断最旧', () => {
+      const created = store.add(draft({ title: 'A', password: 'p0' }))
+      for (let i = 1; i <= 7; i++) {
+        store.update(created.id, draft({ title: 'A', password: `p${i}` }))
+      }
+      const history = store.list()[0].passwordHistory
+      expect(history).toHaveLength(5)
+      expect(history?.map((h) => h.password)).toEqual(['p6', 'p5', 'p4', 'p3', 'p2'])
+    })
+
+    it('历史随加密往返保留；磁盘 version 升 v5', () => {
+      const created = store.add(draft({ title: 'A', password: 'p1' }))
+      store.update(created.id, draft({ title: 'A', password: 'p2' }))
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, 'vault.safebox'), 'utf-8'))
+      expect(meta.version).toBe(5)
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.list()[0].passwordHistory?.[0].password).toBe('p1')
+    })
+
+    it('mergeEntries 透传合法历史并截断；结构非法条目剔除', () => {
+      const base = { title: 'M', category: 'other', url: '', username: '', password: 'x', notes: '', favorite: false, createdAt: 1, updatedAt: 2 }
+      // 故意混入结构非法的历史条目（password 非 string / 非对象），验证净化剔除
+      const entries = [
+        { ...base, id: 'm1', passwordHistory: [{ password: 'old', changedAt: 9 }] },
+        { ...base, id: 'm2', passwordHistory: [{ password: 'ok', changedAt: 8 }, { password: 123 }, 'bad'] },
+      ]
+      store.mergeEntries(entries as unknown as import('../../shared/types').AccountEntry[])
+      expect(store.list().find((e) => e.id === 'm1')?.passwordHistory).toEqual([{ password: 'old', changedAt: 9 }])
+      expect(store.list().find((e) => e.id === 'm2')?.passwordHistory).toEqual([{ password: 'ok', changedAt: 8 }])
+    })
+
+    it('load 时 passwordHistory 结构非法条目剔除、合法保留', () => {
+      writeRawStore(tmpDir, [
+        validEntry({ id: 'e1', passwordHistory: [{ password: 'good', changedAt: 5 }, { nope: 1 }, null] }),
+      ])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      expect(reloaded.list()[0].passwordHistory).toEqual([{ password: 'good', changedAt: 5 }])
+    })
+  })
 })

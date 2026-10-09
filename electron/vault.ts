@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { safeStorage } from 'electron'
-import type { AccountEntry, EntryDraft, LoadStatus } from '../shared/types'
+import type { AccountEntry, EntryDraft, LoadStatus, PasswordHistoryItem } from '../shared/types'
 
 /**
  * 本地数据存储：无启动密码，应用启动即加载。
@@ -16,11 +16,15 @@ const MAX_BACKUPS = 3
 /** 回收站保留时长：超过后自动物理清理 */
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
+/** 历史密码保留条数上限 */
+const PASSWORD_HISTORY_LIMIT = 5
+
 /**
  * 数据磁盘文件结构。
  * version 历史：v1 主密码加密（已废弃，读取失败走 broken 备份）；v2 safeStorage 加密；
- * v3 条目支持软删除（deletedAt）；v4 条目支持 TOTP 秘钥（totpSecret）。
- * v2/v3/v4 结构向后兼容：新增字段均可选且缺省视为未启用，
+ * v3 条目支持软删除（deletedAt）；v4 条目支持 TOTP 秘钥（totpSecret）；
+ * v5 条目支持历史密码（passwordHistory）。
+ * v2~v5 结构向后兼容：新增字段均可选且缺省视为未启用，
  * 因此 load() 不做版本拦截，旧文件升级无缝兼容。
  */
 interface StoreFile {
@@ -120,14 +124,28 @@ export class VaultStore {
     return entry
   }
 
+  /**
+   * 编辑账号：密码实际变化且旧密码非空时，把旧值压入 passwordHistory（新→旧，保留最近 5 条）。
+   * 历史由主进程派生，不接受渲染端提交（EntryDraft 无此字段，normalizeDraft 也不会产出）。
+   */
   update(id: string, draft: EntryDraft): AccountEntry {
     const index = this.entries.findIndex((e) => e.id === id)
     if (index === -1) throw new Error('账号不存在')
+    const previous = this.entries[index]
+    const normalized = normalizeDraft(draft)
+    const now = Date.now()
     const updated: AccountEntry = {
-      ...this.entries[index],
-      ...normalizeDraft(draft),
+      ...previous,
+      ...normalized,
       favorite: draft.favorite === true,
-      updatedAt: Date.now(),
+      updatedAt: now,
+    }
+    if (previous.password && previous.password !== normalized.password) {
+      const history = [
+        { password: previous.password, changedAt: now },
+        ...(previous.passwordHistory ?? []),
+      ].slice(0, PASSWORD_HISTORY_LIMIT)
+      updated.passwordHistory = history
     }
     const next = [...this.entries]
     next[index] = updated
@@ -226,6 +244,8 @@ export class VaultStore {
       updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now,
       // 备份可能包含回收站中的条目，恢复其软删除状态（非法值视为未删除）
       deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : undefined,
+      // 历史密码透传（结构非法条目剔除、截断到上限；空结果归一为 undefined 不落盘冗余）
+      passwordHistory: sanitizeHistory(entry.passwordHistory),
     }))
     this.commit([...this.entries, ...cleaned])
     return { imported: cleaned.length, skipped }
@@ -279,9 +299,9 @@ export class VaultStore {
     const json = JSON.stringify({ entries: this.entries, savedAt: Date.now() } satisfies StorePayload)
     let meta: StoreFile
     if (safeStorage.isEncryptionAvailable()) {
-      meta = { version: 4, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
+      meta = { version: 5, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
     } else {
-      meta = { version: 4, encrypted: false, payload: json }
+      meta = { version: 5, encrypted: false, payload: json }
     }
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(meta), 'utf-8')
@@ -362,7 +382,23 @@ function normalizeEntry(raw: unknown): AccountEntry | null {
   }
   if (typeof e.deletedAt === 'number') entry.deletedAt = e.deletedAt
   if (isStr(e.totpSecret) && e.totpSecret) entry.totpSecret = e.totpSecret
+  // 历史密码：逐条校验结构，非法条目剔除；全部非法或空数组则不设置该字段
+  const history = sanitizeHistory(e.passwordHistory)
+  if (history) entry.passwordHistory = history
   return entry
+}
+
+/** 历史密码数组净化：剔除非对象/字段类型错误的条目，截断到上限；空结果返回 undefined */
+function sanitizeHistory(raw: unknown): PasswordHistoryItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const history = raw.filter(
+    (item): item is PasswordHistoryItem =>
+      typeof item === 'object' &&
+      item !== null &&
+      typeof (item as PasswordHistoryItem).password === 'string' &&
+      typeof (item as PasswordHistoryItem).changedAt === 'number',
+  )
+  return history.length > 0 ? history.slice(0, PASSWORD_HISTORY_LIMIT) : undefined
 }
 
 /** 校验并规范化渲染进程提交的账号数据 */
