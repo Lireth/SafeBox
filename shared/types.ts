@@ -46,6 +46,26 @@ export interface LockState {
   locked: boolean
 }
 
+/** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */
+export interface BackupExportResult {
+  canceled: boolean
+  /** 保存路径（取消时缺省） */
+  path?: string
+  /** 导出条数（取消时缺省） */
+  count?: number
+}
+
+/** 加密备份导入结果（用户在系统对话框取消时 canceled=true） */
+export interface BackupImportResult {
+  canceled: boolean
+  /** 文件内总条数 */
+  total?: number
+  /** 新增条数 */
+  imported?: number
+  /** 因 id 已存在而跳过的条数 */
+  skipped?: number
+}
+
 export interface SafeBoxAPI {
   /** 列出所有账号 */
   listEntries(): Promise<AccountEntry[]>
@@ -63,6 +83,10 @@ export interface SafeBoxAPI {
   unlockApp(pin: string): Promise<void>
   /** 订阅锁定状态变化，返回取消订阅函数 */
   onLockChanged(listener: (locked: boolean) => void): () => void
+  /** 导出加密备份（弹出系统保存对话框，口令 + AES-256-GCM） */
+  exportEncryptedBackup(password: string): Promise<BackupExportResult>
+  /** 导入加密备份（弹出系统打开对话框，导入前自动备份当前数据） */
+  importEncryptedBackup(password: string): Promise<BackupImportResult>
   addEntry(draft: EntryDraft): Promise<AccountEntry>
   updateEntry(id: string, draft: EntryDraft): Promise<AccountEntry>
   deleteEntry(id: string): Promise<void>

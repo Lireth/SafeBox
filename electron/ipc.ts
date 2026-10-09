@@ -1,4 +1,5 @@
-import { app, clipboard, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import { exportEncryptedBackup, importEncryptedBackup } from './backup'
 import type { EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import { VaultStore } from './vault'
@@ -36,6 +37,41 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
   ipcMain.handle('lock:unlock', (_event, pin: unknown) => {
     lock.unlock(pin, store)
   })
+
+  // ---- 加密备份导出 / 导入（锁定期间拒绝） ----
+
+  /** 当前主窗口（用于挂载系统对话框），无窗口时为 null */
+  const mainWindow = () => BrowserWindow.getAllWindows()[0] ?? null
+
+  const BACKUP_FILE_FILTER = [{ name: 'SafeBox 加密备份', extensions: ['json'] }]
+
+  ipcMain.handle('backup:export', (_event, password: unknown) =>
+    guard(async () => {
+      const win = mainWindow()
+      const result = await dialog.showSaveDialog(win, {
+        title: '导出加密备份',
+        defaultPath: `safebox-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: BACKUP_FILE_FILTER
+      })
+      if (result.canceled || !result.filePath) return { canceled: true }
+      const count = exportEncryptedBackup(store, result.filePath, assertString(password, '口令'))
+      return { canceled: false, path: result.filePath, count }
+    })
+  )
+
+  ipcMain.handle('backup:import', (_event, password: unknown) =>
+    guard(async () => {
+      const win = mainWindow()
+      const result = await dialog.showOpenDialog(win, {
+        title: '导入加密备份',
+        filters: BACKUP_FILE_FILTER,
+        properties: ['openFile']
+      })
+      if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+      const stats = importEncryptedBackup(store, result.filePaths[0], assertString(password, '口令'))
+      return { canceled: false, ...stats }
+    })
+  )
 
   // ---- 账号 CRUD（锁定期间拒绝访问数据） ----
 

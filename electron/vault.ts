@@ -132,6 +132,39 @@ export class VaultStore {
   }
 
   /**
+   * 导入合并：跳过 id 已存在的条目（不静默覆盖），
+   * 全部条目经 normalizeDraft 净化后一次性原子落盘（写盘失败整体回滚）。
+   * 落盘前的 backupCurrent 会自动产生一份「导入前」的完整备份。
+   */
+  mergeEntries(entries: AccountEntry[]): { imported: number; skipped: number } {
+    const existing = new Set(this.entries.map((e) => e.id))
+    const incoming: AccountEntry[] = []
+    let skipped = 0
+    for (const entry of entries) {
+      if (entry === null || typeof entry !== 'object') {
+        throw new Error('备份内容包含无效条目')
+      }
+      if (typeof entry.id === 'string' && existing.has(entry.id)) {
+        skipped++
+        continue
+      }
+      incoming.push(entry)
+    }
+    if (incoming.length === 0) return { imported: 0, skipped }
+
+    const now = Date.now()
+    const cleaned = incoming.map((entry) => ({
+      id: typeof entry.id === 'string' && entry.id ? entry.id : crypto.randomUUID(),
+      ...normalizeDraft(entry),
+      favorite: entry.favorite === true,
+      createdAt: typeof entry.createdAt === 'number' ? entry.createdAt : now,
+      updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now
+    }))
+    this.commit([...this.entries, ...cleaned])
+    return { imported: cleaned.length, skipped }
+  }
+
+  /**
    * 统一写入入口：应用内存变更并持久化。
    * 写盘失败时回滚内存到变更前状态，保证内存与磁盘始终一致，
    * 避免后续操作基于「假成功」状态扩大不一致。

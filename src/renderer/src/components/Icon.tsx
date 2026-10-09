@@ -30,6 +30,9 @@ export type IconName =
   | 'inbox'
   | 'clock'
   | 'alert-triangle'
+  | 'archive'
+  | 'download'
+  | 'upload'
 
 const PATHS: Record<IconName, React.ReactNode> = {
   lock: (
@@ -170,6 +173,27 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
       <path d="M12 9v4M12 17h.01" />
+    </>
+  ),
+  archive: (
+    <>
+      <polyline points="21 8 21 21 3 21 3 8" />
+      <rect x="1" y="3" width="22" height="5" />
+      <path d="M10 12h4" />
+    </>
+  ),
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 3v12" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M17 8l-5-5-5 5" />
+      <path d="M12 3v12" />
     </>
   )
 }

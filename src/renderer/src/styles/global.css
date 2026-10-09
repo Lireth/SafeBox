@@ -1128,6 +1128,47 @@ textarea {
   color: var(--danger);
 }
 
+/* ---------- 备份与恢复弹窗 ---------- */
+
+.backup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.backup-section .field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.backup-hint {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+
+.backup-input {
+  margin-top: 2px;
+}
+
+.backup-divider {
+  height: 1px;
+  margin: 16px 0;
+  background: var(--border);
+}
+
+.backup-notice {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 8px;
+}
+
 /* ---------- 动画 ---------- */
 
 @keyframes fade-in {

@@ -15,6 +15,8 @@ interface SidebarProps {
   onLock: () => void
   /** 打开锁定 PIN 设置弹窗（未启用时显示） */
   onSetupPin: () => void
+  /** 打开备份与恢复弹窗 */
+  onBackup: () => void
 }
 
 export function Sidebar({
@@ -26,7 +28,8 @@ export function Sidebar({
   onQueryChange,
   onAdd,
   onLock,
-  onSetupPin
+  onSetupPin,
+  onBackup
 }: SidebarProps): React.JSX.Element {
   const [showClear, setShowClear] = useState(false)
 
@@ -115,6 +118,10 @@ export function Sidebar({
             设置锁定
           </button>
         )}
+        <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onBackup}>
+          <Icon name="archive" size={15} />
+          备份与恢复
+        </button>
       </div>
     </aside>
   )

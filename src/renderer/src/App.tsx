@@ -6,9 +6,10 @@ import { EntryDetailModal } from './components/EntryDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
 import { LockScreen } from './components/LockScreen'
 import { PinSetupModal } from './components/PinSetupModal'
+import { BackupModal } from './components/BackupModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
-import type { AccountEntry, EntryDraft } from '../../../shared/types'
+import type { AccountEntry, BackupExportResult, BackupImportResult, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
   mode: 'new' | 'edit'
@@ -33,6 +34,7 @@ export default function App(): React.JSX.Element {
   const [locked, setLocked] = useState(false)
   const [pinEnabled, setPinEnabled] = useState(false)
   const [pinModalOpen, setPinModalOpen] = useState(false)
+  const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
@@ -219,6 +221,17 @@ export default function App(): React.JSX.Element {
     showToast('锁定已清除')
   }
 
+  async function handleExportBackup(password: string): Promise<BackupExportResult> {
+    const result = await window.safebox.exportEncryptedBackup(password)
+    return result
+  }
+
+  async function handleImportBackup(password: string): Promise<BackupImportResult> {
+    const result = await window.safebox.importEncryptedBackup(password)
+    if (!result.canceled) await refetchEntries()
+    return result
+  }
+
   // ---- 渲染 ----
 
   if (!ready) {
@@ -243,6 +256,7 @@ export default function App(): React.JSX.Element {
         onAdd={() => setFormTarget({ mode: 'new', entry: null })}
         onLock={() => void handleLockNow()}
         onSetupPin={() => setPinModalOpen(true)}
+        onBackup={() => setBackupModalOpen(true)}
       />
 
       <main className="main">
@@ -349,6 +363,10 @@ export default function App(): React.JSX.Element {
           onSetup={handleSetupPin}
           onClear={handleClearPin}
         />
+      )}
+
+      {backupModalOpen && (
+        <BackupModal onClose={() => setBackupModalOpen(false)} onExport={handleExportBackup} onImport={handleImportBackup} />
       )}
 
       {toast && (
