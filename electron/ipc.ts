@@ -100,6 +100,12 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
     guard(() => store.remove(assertString(id, 'id')))
   })
 
+  ipcMain.handle('entries:restore', (_event, id: unknown) => guard(() => store.restore(assertString(id, 'id'))))
+
+  ipcMain.handle('entries:purge', (_event, id: unknown) => {
+    guard(() => store.purge(assertString(id, 'id')))
+  })
+
   ipcMain.handle('entries:toggle-favorite', (_event, id: unknown) =>
     guard(() => store.toggleFavorite(assertString(id, 'id'))),
   )

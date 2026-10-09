@@ -4,6 +4,7 @@ import { EntryRow } from './components/EntryRow'
 import { EntryFormModal } from './components/EntryFormModal'
 import { EntryDetailModal } from './components/EntryDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
+import { TrashRow } from './components/TrashRow'
 import { LockScreen } from './components/LockScreen'
 import { PinSetupModal } from './components/PinSetupModal'
 import { BackupModal } from './components/BackupModal'
@@ -50,6 +51,8 @@ export default function App(): React.JSX.Element {
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
   const [detailEntry, setDetailEntry] = useState<AccountEntry | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AccountEntry | null>(null)
+  /** 待彻底删除的条目（回收站内操作，物理删除不可恢复） */
+  const [purgeTarget, setPurgeTarget] = useState<AccountEntry | null>(null)
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
@@ -151,21 +154,30 @@ export default function App(): React.JSX.Element {
     toastTimer.current = window.setTimeout(() => setToast(null), 1800)
   }
 
-  // 当前筛选下可见的账号：收藏优先，其余按更新时间倒序
+  // 当前筛选下可见的账号：收藏优先，其余按更新时间倒序；回收站按删除时间倒序
+  const activeEntries = useMemo(() => entries.filter((e) => !e.deletedAt), [entries])
+  const trashEntries = useMemo(() => entries.filter((e) => !!e.deletedAt), [entries])
   const visibleEntries = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return entries
-      .filter((e) => (filter === 'all' ? true : filter === 'favorite' ? e.favorite : e.category === filter))
+    const source = filter === 'trash' ? trashEntries : activeEntries
+    return source
+      .filter((e) =>
+        filter === 'all' || filter === 'trash' ? true : filter === 'favorite' ? e.favorite : e.category === filter,
+      )
       .filter((e) => (q ? [e.title, e.username, e.url, e.notes].some((f) => f.toLowerCase().includes(q)) : true))
-      .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt)
-  }, [entries, filter, query])
+      .sort((a, b) =>
+        filter === 'trash'
+          ? (b.deletedAt ?? 0) - (a.deletedAt ?? 0)
+          : Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt,
+      )
+  }, [activeEntries, trashEntries, filter, query])
 
-  const headerLabel = filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : getCategory(filter).label
+  const headerLabel = filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : filter === 'trash' ? '回收站' : getCategory(filter).label
 
   // 全局快捷键与键盘导航（弹窗打开或锁定期间不响应）
   useEffect(() => {
     const anyModalOpen =
-      !!formTarget || !!detailEntry || !!deleteTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen
+      !!formTarget || !!detailEntry || !!deleteTarget || !!purgeTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen
     const interactionBlocked = anyModalOpen || locked || !ready
 
     function onKey(e: KeyboardEvent): void {
@@ -212,8 +224,8 @@ export default function App(): React.JSX.Element {
         return
       }
 
-      // ---- 列表导航（仅在非输入框聚焦时） ----
-      if (inEditable || interactionBlocked) return
+      // ---- 列表导航（仅在非输入框聚焦时；回收站条目不可打开，禁用导航） ----
+      if (inEditable || interactionBlocked || filter === 'trash') return
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
         setActiveIndex((prev) => {
@@ -234,6 +246,7 @@ export default function App(): React.JSX.Element {
     formTarget,
     detailEntry,
     deleteTarget,
+    purgeTarget,
     pinModalOpen,
     backupModalOpen,
     auditOpen,
@@ -242,6 +255,7 @@ export default function App(): React.JSX.Element {
     ready,
     visibleEntries,
     activeIndex,
+    filter,
     query,
   ])
 
@@ -276,10 +290,35 @@ export default function App(): React.JSX.Element {
     const id = deleteTarget.id
     try {
       await window.safebox.deleteEntry(id)
-      setEntries((prev) => prev.filter((e) => e.id !== id))
+      setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, deletedAt: Date.now() } : e)))
       setDetailEntry((cur) => (cur?.id === id ? null : cur))
       setDeleteTarget(null)
-      showToast('账号已删除')
+      showToast('已移入回收站，30 天内可恢复')
+    } catch (err) {
+      showToast(errorMessage(err, '删除失败'), 'error')
+    }
+  }
+
+  /** 从回收站恢复条目（清除软删除标记） */
+  async function handleRestore(entry: AccountEntry): Promise<void> {
+    try {
+      const restored = await window.safebox.restoreEntry(entry.id)
+      setEntries((prev) => prev.map((e) => (e.id === restored.id ? restored : e)))
+      showToast('账号已恢复')
+    } catch (err) {
+      showToast(errorMessage(err, '恢复失败'), 'error')
+    }
+  }
+
+  /** 彻底删除回收站中的条目（物理删除，不可恢复） */
+  async function handleConfirmPurge(): Promise<void> {
+    if (!purgeTarget) return
+    const id = purgeTarget.id
+    try {
+      await window.safebox.purgeEntry(id)
+      setEntries((prev) => prev.filter((e) => e.id !== id))
+      setPurgeTarget(null)
+      showToast('已彻底删除')
     } catch (err) {
       showToast(errorMessage(err, '删除失败'), 'error')
     }
@@ -348,7 +387,8 @@ export default function App(): React.JSX.Element {
       {locked && <LockScreen onSubmit={(pin) => window.safebox.unlockApp(pin)} />}
 
       <Sidebar
-        entries={entries}
+        entries={activeEntries}
+        trashCount={trashEntries.length}
         filter={filter}
         query={query}
         pinEnabled={pinEnabled}
@@ -420,7 +460,27 @@ export default function App(): React.JSX.Element {
         </header>
 
         <div className="entry-list">
-          {entries.length === 0 ? (
+          {filter === 'trash' ? (
+            visibleEntries.length === 0 ? (
+              <div className="empty-state slim">
+                <div className="empty-icon">
+                  <Icon name="trash" size={26} strokeWidth={1.5} />
+                </div>
+                <h2>回收站是空的</h2>
+                <p>删除的账号会在这里保留 30 天，期间可随时恢复</p>
+              </div>
+            ) : (
+              visibleEntries.map((entry, index) => (
+                <TrashRow
+                  key={entry.id}
+                  entry={entry}
+                  isActive={index === activeIndex}
+                  onRestore={(e) => void handleRestore(e)}
+                  onPurge={setPurgeTarget}
+                />
+              ))
+            )
+          ) : activeEntries.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">
                 <Icon name="inbox" size={34} strokeWidth={1.5} />
@@ -481,9 +541,18 @@ export default function App(): React.JSX.Element {
       {deleteTarget && (
         <ConfirmModal
           title="删除账号"
-          message={`确定要删除「${deleteTarget.title}」吗？删除后无法恢复。`}
+          message={`确定要删除「${deleteTarget.title}」吗？删除后将移入回收站，30 天内可恢复。`}
           onConfirm={() => void handleConfirmDelete()}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {purgeTarget && (
+        <ConfirmModal
+          title="彻底删除"
+          message={`确定要彻底删除「${purgeTarget.title}」吗？彻底删除后无法恢复。`}
+          onConfirm={() => void handleConfirmPurge()}
+          onCancel={() => setPurgeTarget(null)}
         />
       )}
 
@@ -506,7 +575,7 @@ export default function App(): React.JSX.Element {
 
       {auditOpen && (
         <AuditModal
-          entries={entries}
+          entries={activeEntries}
           onClose={() => setAuditOpen(false)}
           onEdit={(entry) => {
             setAuditOpen(false)

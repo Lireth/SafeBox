@@ -3,7 +3,7 @@ import path from 'node:path'
 import { registerIpcHandlers } from './ipc'
 import { LockManager } from './lock'
 import { initAutoUpdater } from './updater'
-import { VaultStore } from './vault'
+import { TRASH_RETENTION_MS, VaultStore } from './vault'
 
 // 是否为开发模式（由 npm script 注入 VITE_DEV_SERVER_URL）
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -65,6 +65,9 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     store.load()
+    // 物理清理回收站中超过保留期（30 天）的条目
+    const purged = store.purgeExpired(TRASH_RETENTION_MS)
+    if (purged > 0) console.info(`[vault] 已自动清理回收站中 ${purged} 条超期条目`)
     lock.init()
     registerIpcHandlers(store, lock)
     createMainWindow()

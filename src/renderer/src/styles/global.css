@@ -840,6 +840,23 @@ textarea {
   opacity: 1;
 }
 
+/* ---------- 回收站行 ---------- */
+
+.trash-row {
+  cursor: default;
+}
+
+/* 回收站操作按钮常显（行不可打开详情，hover 隐藏会不可达） */
+.trash-row .entry-actions,
+.trash-row:hover .entry-actions,
+.trash-row:focus-within .entry-actions {
+  opacity: 1;
+}
+
+.trash-row-purge:hover {
+  color: #d64545;
+}
+
 /* ---------- 空状态 ---------- */
 
 .empty-state {

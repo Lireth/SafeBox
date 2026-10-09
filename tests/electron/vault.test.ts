@@ -138,11 +138,20 @@ describe('VaultStore', () => {
       expect(() => store.update('no-such-id', draft())).toThrow('账号不存在')
     })
 
-    it('remove 删除条目，重复删除抛错', () => {
+    it('remove 为软删除：条目保留，标记 deletedAt 并落盘', () => {
       const created = store.add(draft())
       store.remove(created.id)
-      expect(store.list()).toEqual([])
-      expect(() => store.remove(created.id)).toThrow('账号不存在')
+      // 条目仍在存储中（进入回收站），带 deletedAt 标记
+      const list = store.list()
+      expect(list).toHaveLength(1)
+      expect(typeof list[0].deletedAt).toBe('number')
+      expect(list[0].title).toBe('T')
+      // 重复删除幂等，不抛错
+      expect(() => store.remove(created.id)).not.toThrow()
+      // 软删除标记已持久化
+      const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, 'vault.safebox'), 'utf-8'))
+      const diskJson = meta.encrypted ? safeStorage.decryptString(Buffer.from(meta.payload, 'base64')) : meta.payload
+      expect(diskJson).toContain('deletedAt')
     })
 
     it('toggleFavorite 在 false 与 true 间切换', () => {
@@ -152,6 +161,121 @@ describe('VaultStore', () => {
       expect(() => store.toggleFavorite('no-such-id')).toThrow('账号不存在')
     })
   })
+
+  describe('回收站（软删除 / 恢复 / 彻底删除 / 自动清理）', () => {
+    it('restore 清除 deletedAt，条目回到正常状态', () => {
+      const created = store.add(draft({ title: '误删' }))
+      store.remove(created.id)
+      const restored = store.restore(created.id)
+      expect(restored.id).toBe(created.id)
+      expect(restored.deletedAt).toBeUndefined()
+      const list = store.list()
+      expect(list).toHaveLength(1)
+      expect(list[0].deletedAt).toBeUndefined()
+    })
+
+    it('restore 不存在或未删除的条目抛错', () => {
+      expect(() => store.restore('no-such-id')).toThrow('账号不存在')
+      const created = store.add(draft())
+      expect(() => store.restore(created.id)).toThrow('该账号不在回收站中')
+    })
+
+    it('purge 物理删除条目，重复 purge 抛错', () => {
+      const created = store.add(draft())
+      store.remove(created.id)
+      store.purge(created.id)
+      expect(store.list()).toEqual([])
+      expect(() => store.purge(created.id)).toThrow('账号不存在')
+      // purge 不允许绕过软删除直接物理删除未删除条目
+      expect(() => store.purge(store.add(draft()).id)).toThrow('该账号不在回收站中')
+    })
+
+    it('purgeExpired(0) 清理全部已删除条目，未删除条目不受影响', () => {
+      const keep = store.add(draft({ title: '保留' }))
+      const del1 = store.add(draft({ title: '删除1' }))
+      const del2 = store.add(draft({ title: '删除2' }))
+      store.remove(del1.id)
+      store.remove(del2.id)
+      expect(store.purgeExpired(0)).toBe(2)
+      expect(store.list().map((e) => e.id)).toEqual([keep.id])
+      // 无可清理时返回 0
+      expect(store.purgeExpired(0)).toBe(0)
+    })
+
+    it('purgeExpired(30 天) 不清理刚删除的条目', () => {
+      const created = store.add(draft())
+      store.remove(created.id)
+      expect(store.purgeExpired(30 * 24 * 60 * 60 * 1000)).toBe(0)
+      expect(store.list()).toHaveLength(1)
+    })
+
+    it('磁盘上软删除超期的条目在启动清理中被物理移除', () => {
+      const now = Date.now()
+      const base = { category: 'dev', url: '', username: '', password: '', notes: '', favorite: false }
+      const stale = { id: 'stale-1', title: '超期', ...base, createdAt: 1, updatedAt: 2, deletedAt: now - 31 * 24 * 60 * 60 * 1000 }
+      const fresh = { id: 'fresh-1', title: '未超期', ...base, createdAt: 1, updatedAt: 2, deletedAt: now - 1000 }
+      const normal = { id: 'normal-1', title: '正常', ...base, createdAt: 1, updatedAt: 2 }
+      writeRawStore(tmpDir, [stale, fresh, normal])
+
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      expect(reloaded.purgeExpired(30 * 24 * 60 * 60 * 1000)).toBe(1)
+      expect(reloaded.list().map((e) => e.id)).toEqual(['fresh-1', 'normal-1'])
+    })
+
+    it('旧版本数据文件（v2，无 deletedAt）升级后无缝兼容', () => {
+      const legacy = {
+        id: 'legacy-1',
+        title: '旧数据',
+        category: 'dev',
+        url: '',
+        username: 'u',
+        password: 'p',
+        notes: '',
+        favorite: false,
+        createdAt: 1,
+        updatedAt: 2,
+      }
+      writeRawStore(tmpDir, [legacy], 2)
+
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.getLoadStatus()).toEqual({ status: 'ok' })
+      const list = reloaded.list()
+      expect(list).toHaveLength(1)
+      expect(list[0].title).toBe('旧数据')
+      expect(list[0].deletedAt).toBeUndefined()
+      // 升级后可正常走软删除流程
+      reloaded.remove('legacy-1')
+      expect(typeof reloaded.list()[0].deletedAt).toBe('number')
+      expect(reloaded.restore('legacy-1').deletedAt).toBeUndefined()
+    })
+
+    it('mergeEntries 保留备份中条目的软删除状态', () => {
+      const base = { title: 'B', category: 'dev', url: '', username: '', password: '', notes: '', favorite: false }
+      const stats = store.mergeEntries([
+        { ...base, id: 'b1', createdAt: 1, updatedAt: 2, deletedAt: 123456 },
+        { ...base, id: 'b2', createdAt: 1, updatedAt: 2 },
+        { ...base, id: 'b3', createdAt: 1, updatedAt: 2, deletedAt: 'bad' as unknown as number },
+      ])
+      expect(stats).toEqual({ imported: 3, skipped: 0 })
+      const list = store.list()
+      expect(list.find((e) => e.id === 'b1')?.deletedAt).toBe(123456)
+      expect(list.find((e) => e.id === 'b2')?.deletedAt).toBeUndefined()
+      expect(list.find((e) => e.id === 'b3')?.deletedAt).toBeUndefined()
+    })
+  })
+
+  /** 以明文形式写入数据文件（绕过加密，模拟旧版本磁盘内容） */
+  function writeRawStore(dir: string, entries: unknown[], version = 3): void {
+    const meta = {
+      version,
+      encrypted: false,
+      payload: JSON.stringify({ entries, savedAt: Date.now() }),
+    }
+    fs.writeFileSync(path.join(dir, 'vault.safebox'), JSON.stringify(meta), 'utf-8')
+  }
 
   // 写盘失败回滚依赖 Windows ACL，其他平台跳过
   describe.skipIf(process.platform !== 'win32')('写盘失败回滚（icacls 模拟磁盘故障）', () => {

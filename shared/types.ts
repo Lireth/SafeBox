@@ -24,6 +24,8 @@ export interface AccountEntry {
   favorite: boolean
   createdAt: number
   updatedAt: number
+  /** 软删除时间戳；缺省 / undefined 视为未删除（兼容旧版本数据文件） */
+  deletedAt?: number
 }
 
 /** 新增 / 编辑时由渲染端提交的数据 */
@@ -93,7 +95,12 @@ export interface SafeBoxAPI {
   installUpdate(): Promise<void>
   addEntry(draft: EntryDraft): Promise<AccountEntry>
   updateEntry(id: string, draft: EntryDraft): Promise<AccountEntry>
+  /** 删除账号（软删除，移入回收站，30 天后自动清除） */
   deleteEntry(id: string): Promise<void>
+  /** 从回收站恢复账号（清除软删除标记） */
+  restoreEntry(id: string): Promise<AccountEntry>
+  /** 彻底删除回收站中的账号（物理删除，无法恢复） */
+  purgeEntry(id: string): Promise<void>
   toggleFavorite(id: string): Promise<AccountEntry>
   /** 复制到系统剪贴板（主进程侧，30 秒后自动清空） */
   copyText(text: string): Promise<void>

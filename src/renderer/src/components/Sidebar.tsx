@@ -4,7 +4,10 @@ import { CATEGORIES, type FilterId } from '../lib/categories'
 import type { AccountEntry } from '../../../../shared/types'
 
 interface SidebarProps {
+  /** 当前筛选下参与计数的条目（已排除回收站中的条目） */
   entries: AccountEntry[]
+  /** 回收站中的条目数（导航计数展示） */
+  trashCount: number
   filter: FilterId
   query: string
   pinEnabled: boolean
@@ -23,6 +26,7 @@ interface SidebarProps {
 
 export function Sidebar({
   entries,
+  trashCount,
   filter,
   query,
   pinEnabled,
@@ -95,6 +99,7 @@ export function Sidebar({
       <nav className="nav">
         {renderItem('all', '全部账号', <Icon name="grid" size={16} />, counts.all)}
         {renderItem('favorite', '收藏', <Icon name="star" size={16} filled />, counts.favorite)}
+        {renderItem('trash', '回收站', <Icon name="trash" size={16} />, trashCount)}
         <div className="nav-divider">分类</div>
         {CATEGORIES.map((cat) =>
           renderItem(

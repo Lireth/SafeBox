@@ -13,7 +13,15 @@ import type { AccountEntry, EntryDraft, LoadStatus } from '../shared/types'
 /** 保存时保留的轮换备份份数 */
 const MAX_BACKUPS = 3
 
-/** 数据磁盘文件结构 */
+/** 回收站保留时长：超过后自动物理清理 */
+export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
+
+/**
+ * 数据磁盘文件结构。
+ * version 历史：v1 主密码加密（已废弃，读取失败走 broken 备份）；v2 safeStorage 加密；
+ * v3 条目支持软删除（deletedAt）。v2/v3 结构兼容：v2 条目无 deletedAt 视为未删除，
+ * 因此 load() 不做版本拦截，旧文件升级无缝兼容。
+ */
 interface StoreFile {
   version: number
   /** 是否使用 safeStorage 加密 */
@@ -111,10 +119,51 @@ export class VaultStore {
     return updated
   }
 
+  /**
+   * 删除账号：软删除（标记 deletedAt 移入回收站）。
+   * 条目保留在存储中，可经 restore() 恢复；updatedAt 不变（内容未被修改）。
+   */
   remove(id: string): void {
-    const next = this.entries.filter((e) => e.id !== id)
-    if (next.length === this.entries.length) throw new Error('账号不存在')
+    const index = this.entries.findIndex((e) => e.id === id)
+    if (index === -1) throw new Error('账号不存在')
+    if (this.entries[index].deletedAt) return
+    const next = [...this.entries]
+    next[index] = { ...this.entries[index], deletedAt: Date.now() }
     this.commit(next)
+  }
+
+  /** 从回收站恢复账号（清除软删除标记），返回恢复后的条目 */
+  restore(id: string): AccountEntry {
+    const index = this.entries.findIndex((e) => e.id === id)
+    if (index === -1) throw new Error('账号不存在')
+    if (!this.entries[index].deletedAt) throw new Error('该账号不在回收站中')
+    const restored = { ...this.entries[index] }
+    delete restored.deletedAt
+    const next = [...this.entries]
+    next[index] = restored
+    this.commit(next)
+    return restored
+  }
+
+  /** 彻底删除回收站中的账号（物理删除，不可恢复）；不允许绕过软删除直接物理删除 */
+  purge(id: string): void {
+    const index = this.entries.findIndex((e) => e.id === id)
+    if (index === -1) throw new Error('账号不存在')
+    if (!this.entries[index].deletedAt) throw new Error('该账号不在回收站中')
+    this.commit(this.entries.filter((e) => e.id !== id))
+  }
+
+  /**
+   * 物理清理软删除超过 maxAgeMs 的条目（应用启动时调用），返回清理数量。
+   * 用 >= 判断使 maxAgeMs=0 时所有已删除条目均被清理（测试与手动清空可用）。
+   */
+  purgeExpired(maxAgeMs: number): number {
+    const now = Date.now()
+    const expired = this.entries.filter((e) => typeof e.deletedAt === 'number' && now - e.deletedAt >= maxAgeMs)
+    if (expired.length === 0) return 0
+    const expiredIds = new Set(expired.map((e) => e.id))
+    this.commit(this.entries.filter((e) => !expiredIds.has(e.id)))
+    return expired.length
   }
 
   toggleFavorite(id: string): AccountEntry {
@@ -159,6 +208,8 @@ export class VaultStore {
       favorite: entry.favorite === true,
       createdAt: typeof entry.createdAt === 'number' ? entry.createdAt : now,
       updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now,
+      // 备份可能包含回收站中的条目，恢复其软删除状态（非法值视为未删除）
+      deletedAt: typeof entry.deletedAt === 'number' ? entry.deletedAt : undefined,
     }))
     this.commit([...this.entries, ...cleaned])
     return { imported: cleaned.length, skipped }
@@ -186,9 +237,9 @@ export class VaultStore {
     const json = JSON.stringify({ entries: this.entries, savedAt: Date.now() } satisfies StorePayload)
     let meta: StoreFile
     if (safeStorage.isEncryptionAvailable()) {
-      meta = { version: 2, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
+      meta = { version: 3, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
     } else {
-      meta = { version: 2, encrypted: false, payload: json }
+      meta = { version: 3, encrypted: false, payload: json }
     }
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(meta), 'utf-8')
