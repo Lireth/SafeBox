@@ -625,6 +625,37 @@ textarea {
   min-height: 0;
 }
 
+/* ---------- 更新就绪横幅 ---------- */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 20px 0;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.update-banner-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.update-banner-text {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--text-2);
+  min-width: 0;
+}
+
+.update-banner-action {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 5px 10px;
+}
+
 /* ---------- 数据加载异常警示条 ---------- */
 
 .load-warning {

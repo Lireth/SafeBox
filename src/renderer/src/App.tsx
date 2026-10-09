@@ -40,6 +40,9 @@ export default function App(): React.JSX.Element {
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [auditOpen, setAuditOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  /** 非 null 表示新版本已下载就绪（值为版本号） */
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null)
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
   /** 键盘导航在列表中的当前位置（-1 表示未选中） */
   const [activeIndex, setActiveIndex] = useState(-1)
   const [filter, setFilter] = useState<FilterId>('all')
@@ -109,9 +112,14 @@ export default function App(): React.JSX.Element {
         void refetchEntries()
       }
     })
+    // 订阅自动更新就绪事件
+    const offUpdate = window.safebox.onUpdateReady((info) => {
+      setUpdateVersion(info.version)
+    })
     return () => {
       cancelled = true
       off()
+      offUpdate()
     }
   }, [])
 
@@ -354,6 +362,23 @@ export default function App(): React.JSX.Element {
       />
 
       <main className="main">
+        {updateVersion && !updateBannerDismissed && !locked && (
+          <div className="update-banner" role="status">
+            <Icon name="download" size={15} className="update-banner-icon" />
+            <span className="update-banner-text">新版本 v{updateVersion} 已就绪，将随下次启动自动安装。</span>
+            <button
+              type="button"
+              className="btn btn-ghost update-banner-action"
+              onClick={() => void window.safebox.installUpdate()}
+            >
+              立即重启更新
+            </button>
+            <button type="button" className="icon-btn" aria-label="关闭提示" onClick={() => setUpdateBannerDismissed(true)}>
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        )}
+
         {loadWarning && (
           <div className="load-warning" role="alert">
             <Icon name="alert-triangle" size={18} className="load-warning-icon" />

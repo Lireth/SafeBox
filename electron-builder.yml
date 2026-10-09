@@ -1,6 +1,11 @@
 appId: com.safebox.app
 # 英文名用于可执行文件与安装目录，中文名用于快捷方式显示
 productName: SafeBox
+# 自动更新发布渠道：GitHub Releases（electron-updater 读取 latest.yml 检测新版本）
+publish:
+  provider: github
+  owner: Lireth
+  repo: SafeBox
 directories:
   output: release
   buildResources: build

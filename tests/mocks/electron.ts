@@ -9,6 +9,13 @@
 export const mockState = {
   /** powerMonitor.getSystemIdleTime() 的返回值（秒） */
   idleSeconds: 0,
+  /** BrowserWindow.getAllWindows() 返回的窗口列表（updater 广播使用） */
+  windows: [] as Array<{ isDestroyed: () => boolean; webContents: { send: (channel: string, payload: unknown) => void } }>
+}
+
+export const app = {
+  /** 模拟打包环境（updater 以此判断是否跳过更新检查） */
+  isPackaged: false
 }
 
 export const safeStorage = {

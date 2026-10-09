@@ -33,6 +33,7 @@ const INVOKE_CHANNELS = new Set([
   'lock:unlock',
   'backup:export',
   'backup:import',
+  'update:install'
 ])
 
 /** invoke 封装：白名单校验 + 还原主进程抛出的真实错误信息 */
@@ -66,6 +67,12 @@ export const electronAPI: SafeBoxAPI = {
   },
   exportEncryptedBackup: (password) => invoke<BackupExportResult>('backup:export', password),
   importEncryptedBackup: (password) => invoke<BackupImportResult>('backup:import', password),
+  onUpdateReady: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, info: { version: string }): void => listener(info)
+    ipcRenderer.on('update:available', wrapped)
+    return () => ipcRenderer.removeListener('update:available', wrapped)
+  },
+  installUpdate: () => invoke('update:install'),
   addEntry: (draft) => invoke<AccountEntry>('entries:add', draft),
   updateEntry: (id, draft) => invoke<AccountEntry>('entries:update', id, draft),
   deleteEntry: (id) => invoke('entries:delete', id),

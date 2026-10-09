@@ -6,10 +6,11 @@ export default defineConfig({
   resolve: {
     alias: {
       electron: path.resolve(__dirname, 'tests/mocks/electron.ts'),
-    },
+      'electron-updater': path.resolve(__dirname, 'tests/mocks/electron-updater.ts')
+    }
   },
   test: {
     include: ['tests/**/*.test.ts'],
-    environment: 'node',
-  },
+    environment: 'node'
+  }
 })

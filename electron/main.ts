@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc'
 import { LockManager } from './lock'
+import { initAutoUpdater } from './updater'
 import { VaultStore } from './vault'
 
 // 是否为开发模式（由 npm script 注入 VITE_DEV_SERVER_URL）
@@ -70,6 +71,8 @@ if (!app.requestSingleInstanceLock()) {
     // 已设置 PIN 时启动即锁定，防止无人值守泄露
     lock.lock(store)
     lock.startIdleMonitor(store)
+    // 自动更新检查（开发环境自动跳过）
+    initAutoUpdater()
 
     app.on('activate', () => {
       // macOS: 点击 Dock 图标时若无窗口则重建

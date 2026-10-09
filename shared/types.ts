@@ -87,6 +87,10 @@ export interface SafeBoxAPI {
   exportEncryptedBackup(password: string): Promise<BackupExportResult>
   /** 导入加密备份（弹出系统打开对话框，导入前自动备份当前数据） */
   importEncryptedBackup(password: string): Promise<BackupImportResult>
+  /** 订阅更新就绪事件（新版本已下载），返回取消订阅函数 */
+  onUpdateReady(listener: (info: { version: string }) => void): () => void
+  /** 立即重启并安装已下载的更新 */
+  installUpdate(): Promise<void>
   addEntry(draft: EntryDraft): Promise<AccountEntry>
   updateEntry(id: string, draft: EntryDraft): Promise<AccountEntry>
   deleteEntry(id: string): Promise<void>

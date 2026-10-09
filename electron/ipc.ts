@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
 import type { EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
+import { installUpdate } from './updater'
 import { VaultStore } from './vault'
 
 /** 剪贴板自动清空时长（毫秒） */
@@ -65,13 +66,19 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
       const result = await dialog.showOpenDialog(win, {
         title: '导入加密备份',
         filters: BACKUP_FILE_FILTER,
-        properties: ['openFile'],
+        properties: ['openFile']
       })
       if (result.canceled || result.filePaths.length === 0) return { canceled: true }
       const stats = importEncryptedBackup(store, result.filePaths[0], assertString(password, '口令'))
       return { canceled: false, ...stats }
-    }),
+    })
   )
+
+  // ---- 自动更新 ----
+
+  ipcMain.handle('update:install', () => {
+    installUpdate()
+  })
 
   // ---- 账号 CRUD（锁定期间拒绝访问数据） ----
 
