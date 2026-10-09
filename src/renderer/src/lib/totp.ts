@@ -71,22 +71,6 @@ function base32Decode(secret: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(out)
 }
 
-function base32Encode(bytes: Uint8Array): string {
-  let bits = 0
-  let value = 0
-  let out = ''
-  for (const byte of bytes) {
-    value = (value << 8) | byte
-    bits += 8
-    while (bits >= 5) {
-      bits -= 5
-      out += BASE32_ALPHABET[(value >>> bits) & 31]
-    }
-  }
-  if (bits > 0) out += BASE32_ALPHABET[(value << (5 - bits)) & 31]
-  return out
-}
-
 /** 计算当前 TOTP 码（6 位，含前导零）。now 为毫秒时间戳。 */
 export async function totpCode(secret: string, now: number = Date.now()): Promise<string> {
   const counter = Math.floor(now / 1000 / TOTP_PERIOD_SECONDS)
@@ -117,5 +101,3 @@ async function hotp(key: Uint8Array<ArrayBuffer>, counter: number): Promise<stri
 export function totpRemainingSeconds(now: number = Date.now()): number {
   return TOTP_PERIOD_SECONDS - Math.floor((now / 1000) % TOTP_PERIOD_SECONDS)
 }
-
-export { base32Encode }
