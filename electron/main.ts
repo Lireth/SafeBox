@@ -21,7 +21,8 @@ function createMainWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      // preload 仅使用 ipcRenderer，与沙箱兼容；沙箱化可限制渲染层被攻破后的攻击面
+      sandbox: true
     }
   })
 
