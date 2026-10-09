@@ -20,7 +20,6 @@ export function initAutoUpdater(): void {
   autoUpdater.logger = console
 
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('[probe] handler: allWindows =', BrowserWindow.getAllWindows().length)
     console.info(`[updater] 新版本 ${info.version} 已下载，退出时自动安装`)
     const win = BrowserWindow.getAllWindows()[0]
     if (win && !win.isDestroyed()) {
