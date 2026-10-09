@@ -3,6 +3,7 @@ import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { CATEGORIES } from '../lib/categories'
 import { generatePassword, passwordStrength } from '../lib/password'
+import { parseTOTPSecret } from '../lib/totp'
 import type { AccountEntry, EntryDraft } from '../../../../shared/types'
 
 interface EntryFormModalProps {
@@ -32,6 +33,8 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
   const [showPassword, setShowPassword] = useState(false)
   const [genOpen, setGenOpen] = useState(false)
   const [genOptions, setGenOptions] = useState(DEFAULT_GENERATOR)
+  /** TOTP 秘钥即时校验错误（空串表示合法或未填写）；主进程 normalizeTotp 仍为最终防线 */
+  const [totpError, setTotpError] = useState('')
   const titleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -47,6 +50,21 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
 
   function handleGenerate(): void {
     patch({ password: generatePassword(genOptions) })
+  }
+
+  /** TOTP 输入即时校验：空值合法（不启用），非法时展示 parseTOTPSecret 的中文错误 */
+  function handleTotpChange(raw: string): void {
+    patch({ totpSecret: raw })
+    if (!raw.trim()) {
+      setTotpError('')
+      return
+    }
+    try {
+      parseTOTPSecret(raw)
+      setTotpError('')
+    } catch (err) {
+      setTotpError(err instanceof Error ? err.message : 'TOTP 秘钥格式错误')
+    }
   }
 
   async function handleSubmit(e: React.FormEvent): Promise<void> {
@@ -220,9 +238,13 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
           type="text"
           placeholder="otpauth:// 链接或 Base32 秘钥"
           value={form.totpSecret ?? ''}
-          onChange={(e) => patch({ totpSecret: e.target.value })}
+          onChange={(e) => handleTotpChange(e.target.value)}
         />
-        <p className="gen-hint">留空表示不启用；保存后将在详情页动态显示 6 位验证码</p>
+        {totpError ? (
+          <p className="form-error totp-error">{totpError}</p>
+        ) : (
+          <p className="gen-hint">留空表示不启用；保存后将在详情页动态显示 6 位验证码</p>
+        )}
 
         <label className="field-label" htmlFor="entry-notes">
           备注
