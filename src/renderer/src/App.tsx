@@ -7,6 +7,7 @@ import { ConfirmModal } from './components/ConfirmModal'
 import { LockScreen } from './components/LockScreen'
 import { PinSetupModal } from './components/PinSetupModal'
 import { BackupModal } from './components/BackupModal'
+import { AuditModal } from './components/AuditModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import type { AccountEntry, BackupExportResult, BackupImportResult, EntryDraft } from '../../../shared/types'
@@ -35,6 +36,7 @@ export default function App(): React.JSX.Element {
   const [pinEnabled, setPinEnabled] = useState(false)
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [backupModalOpen, setBackupModalOpen] = useState(false)
+  const [auditOpen, setAuditOpen] = useState(false)
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
@@ -257,6 +259,7 @@ export default function App(): React.JSX.Element {
         onLock={() => void handleLockNow()}
         onSetupPin={() => setPinModalOpen(true)}
         onBackup={() => setBackupModalOpen(true)}
+        onAudit={() => setAuditOpen(true)}
       />
 
       <main className="main">
@@ -367,6 +370,17 @@ export default function App(): React.JSX.Element {
 
       {backupModalOpen && (
         <BackupModal onClose={() => setBackupModalOpen(false)} onExport={handleExportBackup} onImport={handleImportBackup} />
+      )}
+
+      {auditOpen && (
+        <AuditModal
+          entries={entries}
+          onClose={() => setAuditOpen(false)}
+          onEdit={(entry) => {
+            setAuditOpen(false)
+            setFormTarget({ mode: 'edit', entry })
+          }}
+        />
       )}
 
       {toast && (
