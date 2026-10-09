@@ -232,6 +232,32 @@ export class VaultStore {
   }
 
   /**
+   * CSV 等外部来源的草稿合并：按「规范化 title + 小写 username」内容键去重
+   * （外部条目无本应用 id，不能复用按 id 去重的 mergeEntries）。
+   * 全部草稿经 normalizeDraft 净化后一次性原子落盘；净化失败整体抛错回滚。
+   */
+  mergeDrafts(drafts: EntryDraft[]): { imported: number; skipped: number } {
+    const contentKey = (title: string, username: string): string => `${title.toLowerCase()}::${username.toLowerCase()}`
+    const existing = new Set(this.entries.map((e) => contentKey(e.title, e.username)))
+    const cleaned: AccountEntry[] = []
+    let skipped = 0
+    const now = Date.now()
+    for (const draft of drafts) {
+      const normalized = normalizeDraft(draft)
+      const key = contentKey(normalized.title, normalized.username)
+      if (existing.has(key)) {
+        skipped++
+        continue
+      }
+      existing.add(key) // 同批 CSV 内部重复仅保留第一条
+      cleaned.push({ ...normalized, id: crypto.randomUUID(), favorite: draft.favorite === true, createdAt: now, updatedAt: now })
+    }
+    if (cleaned.length === 0) return { imported: 0, skipped }
+    this.commit([...this.entries, ...cleaned])
+    return { imported: cleaned.length, skipped }
+  }
+
+  /**
    * 统一写入入口：应用内存变更并持久化。
    * 写盘失败时回滚内存到变更前状态，保证内存与磁盘始终一致，
    * 避免后续操作基于「假成功」状态扩大不一致。

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
-import type { BackupExportResult, BackupImportResult } from '../../../../shared/types'
+import type { BackupExportResult, BackupImportResult, CsvImportResult } from '../../../../shared/types'
 
 interface BackupModalProps {
   onClose: () => void
@@ -9,12 +9,14 @@ interface BackupModalProps {
   onExport: (password: string) => Promise<BackupExportResult>
   /** 导入（App 层透传 IPC，系统打开对话框 + 自动备份） */
   onImport: (password: string) => Promise<BackupImportResult>
+  /** 从第三方密码管理器导入 CSV（App 层透传 IPC，系统打开对话框） */
+  onImportCsv: () => Promise<CsvImportResult>
 }
 
 const MIN_PWD = 8
 
-/** 备份与恢复弹窗：口令加密导出 / 从加密文件导入合并 */
-export function BackupModal({ onClose, onExport, onImport }: BackupModalProps): React.JSX.Element {
+/** 备份与恢复弹窗：口令加密导出 / 从加密文件导入合并 / 从第三方管理器 CSV 导入 */
+export function BackupModal({ onClose, onExport, onImport, onImportCsv }: BackupModalProps): React.JSX.Element {
   const [exportPwd, setExportPwd] = useState('')
   const [exportPwd2, setExportPwd2] = useState('')
   const [importPwd, setImportPwd] = useState('')
@@ -67,6 +69,25 @@ export function BackupModal({ onClose, onExport, onImport }: BackupModalProps): 
       }
     } catch (err) {
       return fail(err instanceof Error ? err.message : '导入失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleImportCsv(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await onImportCsv()
+      if (!result.canceled) {
+        const parts = [`新增 ${result.imported} 条`, `跳过重复 ${result.skipped} 条`]
+        if (result.invalid) parts.push(`忽略无名称行 ${result.invalid} 条`)
+        setNotice(`CSV 导入完成：${parts.join('，')}（有效行共 ${result.total} 条）。`)
+      }
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'CSV 导入失败')
     } finally {
       setBusy(false)
     }
@@ -131,6 +152,20 @@ export function BackupModal({ onClose, onExport, onImport }: BackupModalProps): 
           </button>
         </div>
       </form>
+
+      <div className="backup-divider" />
+
+      <div className="backup-section">
+        <span className="field-label">
+          <Icon name="upload" size={13} /> 从其他密码管理器导入（CSV）
+        </span>
+        <p className="backup-hint">
+          支持 Chrome、Bitwarden、1Password 等导出的 CSV 文件，仅新增不存在的账号（按名称+用户名去重），导入前当前数据会自动创建一份完整备份。
+        </p>
+        <button type="button" className="btn btn-ghost btn-block" disabled={busy} onClick={() => void handleImportCsv()}>
+          选择 CSV 文件并导入
+        </button>
+      </div>
 
       {error && <p className="form-error">{error}</p>}
       {notice && <p className="backup-notice">{notice}</p>}

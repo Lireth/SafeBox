@@ -1,5 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
+import fs from 'node:fs'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
+import { mapCsvEntries, parseCsvRows } from './csv'
 import type { EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import { installUpdate } from './updater'
@@ -72,6 +74,25 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
       const stats = importEncryptedBackup(store, result.filePaths[0], assertString(password, '口令'))
       return { canceled: false, ...stats }
     })
+  )
+
+  // ---- CSV 导入（第三方密码管理器迁移；锁定期间拒绝） ----
+
+  ipcMain.handle('backup:import-csv', () =>
+    guard(async () => {
+      const win = mainWindow()
+      const result = await dialog.showOpenDialog(win, {
+        title: '从密码管理器导入 CSV',
+        filters: [{ name: 'CSV 文件', extensions: ['csv', 'txt'] }],
+        properties: ['openFile'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+      // 明文 CSV 仅在内存中短暂存在：不落临时文件、不写日志
+      const text = fs.readFileSync(result.filePaths[0], 'utf-8')
+      const { drafts, invalid } = mapCsvEntries(parseCsvRows(text))
+      const stats = store.mergeDrafts(drafts)
+      return { canceled: false, total: drafts.length, invalid, ...stats }
+    }),
   )
 
   // ---- 自动更新 ----

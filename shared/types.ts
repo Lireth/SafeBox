@@ -80,6 +80,19 @@ export interface BackupImportResult {
   skipped?: number
 }
 
+/** CSV 导入结果（从第三方密码管理器迁移；取消时 canceled=true） */
+export interface CsvImportResult {
+  canceled: boolean
+  /** 解析出的有效行数（映射阶段，去重前） */
+  total?: number
+  /** 实际新增条数 */
+  imported?: number
+  /** 因与已有条目同名同账号而跳过的条数 */
+  skipped?: number
+  /** 因缺少名称被忽略的行数 */
+  invalid?: number
+}
+
 export interface SafeBoxAPI {
   /** 列出所有账号 */
   listEntries(): Promise<AccountEntry[]>
@@ -101,6 +114,8 @@ export interface SafeBoxAPI {
   exportEncryptedBackup(password: string): Promise<BackupExportResult>
   /** 导入加密备份（弹出系统打开对话框，导入前自动备份当前数据） */
   importEncryptedBackup(password: string): Promise<BackupImportResult>
+  /** 从第三方密码管理器导出的 CSV 文件导入（弹出系统打开对话框，按名称+用户名去重） */
+  importCsv(): Promise<CsvImportResult>
   /** 订阅更新就绪事件（新版本已下载），返回取消订阅函数 */
   onUpdateReady(listener: (info: { version: string }) => void): () => void
   /** 立即重启并安装已下载的更新 */

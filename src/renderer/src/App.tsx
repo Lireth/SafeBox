@@ -13,7 +13,7 @@ import { HotkeyHelpModal } from './components/HotkeyHelpModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import { filterForDigit } from './lib/hotkeys'
-import type { AccountEntry, BackupExportResult, BackupImportResult, EntryDraft } from '../../../shared/types'
+import type { AccountEntry, BackupExportResult, BackupImportResult, CsvImportResult, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
   mode: 'new' | 'edit'
@@ -386,6 +386,12 @@ export default function App(): React.JSX.Element {
     return result
   }
 
+  async function handleImportCsv(): Promise<CsvImportResult> {
+    const result = await window.safebox.importCsv()
+    if (!result.canceled) await refetchEntries()
+    return result
+  }
+
   // ---- 渲染 ----
 
   if (!ready) {
@@ -584,6 +590,7 @@ export default function App(): React.JSX.Element {
           onClose={() => setBackupModalOpen(false)}
           onExport={handleExportBackup}
           onImport={handleImportBackup}
+          onImportCsv={handleImportCsv}
         />
       )}
 

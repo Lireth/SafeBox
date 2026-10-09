@@ -465,4 +465,30 @@ describe('VaultStore', () => {
       expect(reloaded.list()).toEqual([])
     })
   })
+
+  describe('mergeDrafts（CSV 内容键去重导入）', () => {
+    it('新增草稿落盘，重复内容（title+username 大小写不敏感）跳过', () => {
+      store.add(draft({ title: 'GitHub', username: 'Me' }))
+      const result = store.mergeDrafts([
+        draft({ title: 'github', username: 'me' }), // 与已有条目内容重复
+        draft({ title: 'New', username: 'u2' }),
+        draft({ title: 'New', username: 'u2' }), // 同批内部重复仅保留第一条
+      ])
+      expect(result).toEqual({ imported: 1, skipped: 2 })
+      expect(store.list()).toHaveLength(2)
+    })
+
+    it('非法草稿整体抛错并回滚内存（原子性）', () => {
+      store.add(draft({ title: 'A' }))
+      expect(() => store.mergeDrafts([draft({ title: 'B' }), draft({ title: '   ' })])).toThrow('请填写账号名称')
+      expect(store.list()).toHaveLength(1)
+    })
+
+    it('CSV 来源的 otpauth 秘钥经 normalizeDraft 规范化落盘', () => {
+      store.mergeDrafts([
+        { ...draft({ title: 'X' }), totpSecret: 'otpauth://totp/X:u?secret=abcd2345ABCD2345&issuer=X' },
+      ])
+      expect(store.list()[0].totpSecret).toBe('ABCD2345ABCD2345')
+    })
+  })
 })
