@@ -5,11 +5,11 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   resolve: {
     alias: {
-      electron: path.resolve(__dirname, 'tests/mocks/electron.ts')
-    }
+      electron: path.resolve(__dirname, 'tests/mocks/electron.ts'),
+    },
   },
   test: {
     include: ['tests/**/*.test.ts'],
-    environment: 'node'
-  }
+    environment: 'node',
+  },
 })

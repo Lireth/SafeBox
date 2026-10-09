@@ -61,7 +61,7 @@ export function BackupModal({ onClose, onExport, onImport }: BackupModalProps): 
       const result = await onImport(importPwd)
       if (!result.canceled) {
         setNotice(
-          `导入完成：新增 ${result.imported} 条，跳过重复 ${result.skipped} 条（文件共 ${result.total} 条）。导入前的数据已自动备份。`
+          `导入完成：新增 ${result.imported} 条，跳过重复 ${result.skipped} 条（文件共 ${result.total} 条）。导入前的数据已自动备份。`,
         )
         setImportPwd('')
       }
@@ -80,7 +80,8 @@ export function BackupModal({ onClose, onExport, onImport }: BackupModalProps): 
             <Icon name="download" size={13} /> 导出加密备份
           </span>
           <p className="backup-hint">
-            使用独立口令加密（scrypt 派生 + AES-256-GCM），不依赖本机系统加密，可在换机或重装系统后恢复。口令遗失将无法恢复备份。
+            使用独立口令加密（scrypt 派生 +
+            AES-256-GCM），不依赖本机系统加密，可在换机或重装系统后恢复。口令遗失将无法恢复备份。
           </p>
           <input
             className="input"

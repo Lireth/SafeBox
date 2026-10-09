@@ -32,7 +32,7 @@ export function Sidebar({
   onLock,
   onSetupPin,
   onBackup,
-  onAudit
+  onAudit,
 }: SidebarProps): React.JSX.Element {
   const [showClear, setShowClear] = useState(false)
 
@@ -101,8 +101,8 @@ export function Sidebar({
             cat.id,
             cat.label,
             <Icon name={cat.icon} size={16} style={{ color: `hsl(${cat.hue} 62% 58%)` }} />,
-            counts[cat.id] ?? 0
-          )
+            counts[cat.id] ?? 0,
+          ),
         )}
       </nav>
 

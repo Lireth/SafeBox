@@ -202,7 +202,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <rect x="2" y="4" width="20" height="16" rx="2" />
       <path d="M6 8h0M10 8h0M14 8h0M18 8h0M6 12h0M18 12h0M8 16h8" />
     </>
-  )
+  ),
 }
 
 interface IconProps {
@@ -215,7 +215,14 @@ interface IconProps {
   filled?: boolean
 }
 
-export function Icon({ name, size = 16, className, style, strokeWidth = 2, filled = false }: IconProps): React.JSX.Element {
+export function Icon({
+  name,
+  size = 16,
+  className,
+  style,
+  strokeWidth = 2,
+  filled = false,
+}: IconProps): React.JSX.Element {
   return (
     <svg
       className={className}

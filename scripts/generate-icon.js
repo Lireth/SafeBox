@@ -62,14 +62,14 @@ const SHIELD = [
   [CX, 396],
   [CX - SHIELD_HALF * 0.38, 380],
   [CX - SHIELD_HALF * 0.72, 330],
-  [CX - SHIELD_HALF, 250]
+  [CX - SHIELD_HALF, 250],
 ]
 
 function blend(base, overlay, alpha) {
   return [
     base[0] + (overlay[0] - base[0]) * alpha,
     base[1] + (overlay[1] - base[1]) * alpha,
-    base[2] + (overlay[2] - base[2]) * alpha
+    base[2] + (overlay[2] - base[2]) * alpha,
   ]
 }
 
@@ -83,7 +83,7 @@ function sample(u, v) {
   let color = [
     BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t,
     BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t,
-    BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t
+    BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t,
   ]
 
   // 白色盾形
@@ -118,7 +118,10 @@ function render(size) {
       let a = 0
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const [cr, cg, cb, ca] = sample((px + (sx + 0.5) / SS) * step / SIZE, (py + (sy + 0.5) / SS) * step / SIZE)
+          const [cr, cg, cb, ca] = sample(
+            ((px + (sx + 0.5) / SS) * step) / SIZE,
+            ((py + (sy + 0.5) / SS) * step) / SIZE,
+          )
           r += cr * ca
           g += cg * ca
           b += cb * ca
@@ -179,7 +182,7 @@ function encodePNG(size, rgba) {
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk('IHDR', ihdr),
     pngChunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
-    pngChunk('IEND', Buffer.alloc(0))
+    pngChunk('IEND', Buffer.alloc(0)),
   ])
 }
 

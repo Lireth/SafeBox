@@ -147,21 +147,17 @@ export default function App(): React.JSX.Element {
   const visibleEntries = useMemo(() => {
     const q = query.trim().toLowerCase()
     return entries
-      .filter((e) =>
-        filter === 'all' ? true : filter === 'favorite' ? e.favorite : e.category === filter
-      )
-      .filter((e) =>
-        q ? [e.title, e.username, e.url, e.notes].some((f) => f.toLowerCase().includes(q)) : true
-      )
+      .filter((e) => (filter === 'all' ? true : filter === 'favorite' ? e.favorite : e.category === filter))
+      .filter((e) => (q ? [e.title, e.username, e.url, e.notes].some((f) => f.toLowerCase().includes(q)) : true))
       .sort((a, b) => Number(b.favorite) - Number(a.favorite) || b.updatedAt - a.updatedAt)
   }, [entries, filter, query])
 
-  const headerLabel =
-    filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : getCategory(filter).label
+  const headerLabel = filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : getCategory(filter).label
 
   // 全局快捷键与键盘导航（弹窗打开或锁定期间不响应）
   useEffect(() => {
-    const anyModalOpen = !!formTarget || !!detailEntry || !!deleteTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen
+    const anyModalOpen =
+      !!formTarget || !!detailEntry || !!deleteTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen
     const interactionBlocked = anyModalOpen || locked || !ready
 
     function onKey(e: KeyboardEvent): void {
@@ -226,12 +222,28 @@ export default function App(): React.JSX.Element {
 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [formTarget, detailEntry, deleteTarget, pinModalOpen, backupModalOpen, auditOpen, helpOpen, locked, ready, visibleEntries, activeIndex, query])
+  }, [
+    formTarget,
+    detailEntry,
+    deleteTarget,
+    pinModalOpen,
+    backupModalOpen,
+    auditOpen,
+    helpOpen,
+    locked,
+    ready,
+    visibleEntries,
+    activeIndex,
+    query,
+  ])
 
-  // 筛选或搜索变化时重置键盘导航位置
-  useEffect(() => {
+  // 筛选或搜索变化时重置键盘导航位置（渲染期调整状态，避免 effect 级联渲染）
+  const [prevNavKey, setPrevNavKey] = useState('')
+  const navKey = `${filter}|${query}`
+  if (prevNavKey !== navKey) {
+    setPrevNavKey(navKey)
     setActiveIndex(-1)
-  }, [filter, query])
+  }
 
   // ---- 动作 ----
 
@@ -347,9 +359,7 @@ export default function App(): React.JSX.Element {
             <Icon name="alert-triangle" size={18} className="load-warning-icon" />
             <div className="load-warning-text">
               <strong>数据文件解析失败</strong>
-              <span>
-                已自动备份为 {loadWarning}，当前从空数据开始。请先在数据目录中处理备份文件，勿直接重新录入。
-              </span>
+              <span>已自动备份为 {loadWarning}，当前从空数据开始。请先在数据目录中处理备份文件，勿直接重新录入。</span>
             </div>
             <button
               type="button"
@@ -373,7 +383,11 @@ export default function App(): React.JSX.Element {
             <button type="button" className="icon-btn" title="快捷键说明（Ctrl+/）" onClick={() => setHelpOpen(true)}>
               <Icon name="keyboard" size={16} />
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => setFormTarget({ mode: 'new', entry: null })}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setFormTarget({ mode: 'new', entry: null })}
+            >
               <Icon name="plus" size={16} />
               添加账号
             </button>
@@ -388,7 +402,11 @@ export default function App(): React.JSX.Element {
               </div>
               <h2>还没有保存任何账号</h2>
               <p>添加您的第一个账号，数据将加密保存在本机</p>
-              <button type="button" className="btn btn-primary" onClick={() => setFormTarget({ mode: 'new', entry: null })}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setFormTarget({ mode: 'new', entry: null })}
+              >
                 <Icon name="plus" size={16} />
                 添加账号
               </button>
@@ -454,7 +472,11 @@ export default function App(): React.JSX.Element {
       )}
 
       {backupModalOpen && (
-        <BackupModal onClose={() => setBackupModalOpen(false)} onExport={handleExportBackup} onImport={handleImportBackup} />
+        <BackupModal
+          onClose={() => setBackupModalOpen(false)}
+          onExport={handleExportBackup}
+          onImport={handleImportBackup}
+        />
       )}
 
       {auditOpen && (

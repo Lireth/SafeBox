@@ -123,9 +123,7 @@ describe('加密备份导出 / 导入', () => {
     expect(baks).toHaveLength(1)
     // 备份内容 = 导入前状态（仅本地条目，不含导入条目）
     const meta = JSON.parse(fs.readFileSync(path.join(dstDir, baks[0]), 'utf-8'))
-    const plain = meta.encrypted
-      ? safeStorage.decryptString(Buffer.from(meta.payload, 'base64'))
-      : meta.payload
+    const plain = meta.encrypted ? safeStorage.decryptString(Buffer.from(meta.payload, 'base64')) : meta.payload
     expect(plain).toContain('导入前本地条目')
     expect(plain).not.toContain('GitHub')
     // 备份后当前库包含合并结果
@@ -144,7 +142,7 @@ describe('加密备份导出 / 导入', () => {
     dstStore.add(draft({ title: '已有条目' }))
     // 超长标题触发 normalizeDraft 校验失败
     const invalid = [
-      { id: 'bad', title: 'x'.repeat(101), category: 'other', url: '', username: '', password: '', notes: '' }
+      { id: 'bad', title: 'x'.repeat(101), category: 'other', url: '', username: '', password: '', notes: '' },
     ] as Parameters<VaultStore['mergeEntries']>[0]
     expect(() => dstStore.mergeEntries(invalid)).toThrow('名称过长')
     // 回滚：无任何变更

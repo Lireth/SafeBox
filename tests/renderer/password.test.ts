@@ -26,9 +26,15 @@ describe('generatePassword 生成器不变量', () => {
   })
 
   it('未选中的字符类型不会出现', () => {
-    expect(generatePassword({ length: 32, upper: false, lower: false, digits: true, symbols: false })).toMatch(/^[2-9]+$/)
-    expect(generatePassword({ length: 32, upper: false, lower: true, digits: false, symbols: false })).toMatch(/^[a-km-z]+$/)
-    expect(generatePassword({ length: 32, upper: true, lower: false, digits: false, symbols: false })).toMatch(/^[A-HJ-NP-Z]+$/)
+    expect(generatePassword({ length: 32, upper: false, lower: false, digits: true, symbols: false })).toMatch(
+      /^[2-9]+$/,
+    )
+    expect(generatePassword({ length: 32, upper: false, lower: true, digits: false, symbols: false })).toMatch(
+      /^[a-km-z]+$/,
+    )
+    expect(generatePassword({ length: 32, upper: true, lower: false, digits: false, symbols: false })).toMatch(
+      /^[A-HJ-NP-Z]+$/,
+    )
   })
 
   it('不包含易混淆字符（l / I / O / 0 / 1）', () => {

@@ -25,15 +25,15 @@ function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       // preload 仅使用 ipcRenderer，与沙箱兼容；沙箱化可限制渲染层被攻破后的攻击面
-      sandbox: true
-    }
+      sandbox: true,
+    },
   })
 
   win.on('ready-to-show', () => win.show())
 
   // 外部链接走系统默认浏览器
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    void shell.openExternal(url)
     return { action: 'deny' }
   })
 
@@ -62,7 +62,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
 
-  app.whenReady().then(() => {
+  void app.whenReady().then(() => {
     store.load()
     lock.init()
     registerIpcHandlers(store, lock)

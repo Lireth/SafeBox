@@ -51,12 +51,12 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
       const result = await dialog.showSaveDialog(win, {
         title: '导出加密备份',
         defaultPath: `safebox-backup-${new Date().toISOString().slice(0, 10)}.json`,
-        filters: BACKUP_FILE_FILTER
+        filters: BACKUP_FILE_FILTER,
       })
       if (result.canceled || !result.filePath) return { canceled: true }
       const count = exportEncryptedBackup(store, result.filePath, assertString(password, '口令'))
       return { canceled: false, path: result.filePath, count }
-    })
+    }),
   )
 
   ipcMain.handle('backup:import', (_event, password: unknown) =>
@@ -65,12 +65,12 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
       const result = await dialog.showOpenDialog(win, {
         title: '导入加密备份',
         filters: BACKUP_FILE_FILTER,
-        properties: ['openFile']
+        properties: ['openFile'],
       })
       if (result.canceled || result.filePaths.length === 0) return { canceled: true }
       const stats = importEncryptedBackup(store, result.filePaths[0], assertString(password, '口令'))
       return { canceled: false, ...stats }
-    })
+    }),
   )
 
   // ---- 账号 CRUD（锁定期间拒绝访问数据） ----
@@ -83,12 +83,10 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
 
   ipcMain.handle('entries:list', () => guard(() => store.list()))
 
-  ipcMain.handle('entries:add', (_event, draft: unknown) =>
-    guard(() => store.add(draft as EntryDraft))
-  )
+  ipcMain.handle('entries:add', (_event, draft: unknown) => guard(() => store.add(draft as EntryDraft)))
 
   ipcMain.handle('entries:update', (_event, id: unknown, draft: unknown) =>
-    guard(() => store.update(assertString(id, 'id'), draft as EntryDraft))
+    guard(() => store.update(assertString(id, 'id'), draft as EntryDraft)),
   )
 
   ipcMain.handle('entries:delete', (_event, id: unknown) => {
@@ -96,7 +94,7 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
   })
 
   ipcMain.handle('entries:toggle-favorite', (_event, id: unknown) =>
-    guard(() => store.toggleFavorite(assertString(id, 'id')))
+    guard(() => store.toggleFavorite(assertString(id, 'id'))),
   )
 
   // ---- 剪贴板与外链 ----

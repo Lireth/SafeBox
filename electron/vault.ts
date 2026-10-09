@@ -90,7 +90,7 @@ export class VaultStore {
       id: crypto.randomUUID(),
       favorite: draft.favorite === true,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     }
     this.commit([...this.entries, entry])
     return entry
@@ -103,7 +103,7 @@ export class VaultStore {
       ...this.entries[index],
       ...normalizeDraft(draft),
       favorite: draft.favorite === true,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     }
     const next = [...this.entries]
     next[index] = updated
@@ -123,7 +123,7 @@ export class VaultStore {
     const updated: AccountEntry = {
       ...this.entries[index],
       favorite: !this.entries[index].favorite,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     }
     const next = [...this.entries]
     next[index] = updated
@@ -158,7 +158,7 @@ export class VaultStore {
       ...normalizeDraft(entry),
       favorite: entry.favorite === true,
       createdAt: typeof entry.createdAt === 'number' ? entry.createdAt : now,
-      updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now
+      updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now,
     }))
     this.commit([...this.entries, ...cleaned])
     return { imported: cleaned.length, skipped }
@@ -255,7 +255,7 @@ function normalizeDraft(draft: EntryDraft): Omit<AccountEntry, 'id' | 'favorite'
     url: str(draft.url, 500, '网址'),
     username: str(draft.username, 200, '用户名'),
     password: typeof draft.password === 'string' ? draft.password.slice(0, 500) : '',
-    notes: str(draft.notes, 2000, '备注')
+    notes: str(draft.notes, 2000, '备注'),
   }
 }
 

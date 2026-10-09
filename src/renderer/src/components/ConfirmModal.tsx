@@ -10,7 +10,13 @@ interface ConfirmModalProps {
 }
 
 /** 危险操作确认弹窗 */
-export function ConfirmModal({ title, message, confirmText = '删除', onConfirm, onCancel }: ConfirmModalProps): React.JSX.Element {
+export function ConfirmModal({
+  title,
+  message,
+  confirmText = '删除',
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps): React.JSX.Element {
   return (
     <Modal onClose={onCancel}>
       <div className="confirm-body">

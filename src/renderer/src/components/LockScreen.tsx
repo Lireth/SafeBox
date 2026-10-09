@@ -54,9 +54,7 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
           onChange={(e) => setPin(e.target.value)}
         />
         {error && <p className="form-error lock-error">{error}</p>}
-        {failCount >= 2 && !error && (
-          <p className="lock-subtitle lock-fails">已连续失败 {failCount} 次</p>
-        )}
+        {failCount >= 2 && !error && <p className="lock-subtitle lock-fails">已连续失败 {failCount} 次</p>}
         <button type="submit" className="btn btn-primary btn-block" disabled={!pin || busy}>
           {busy ? '验证中…' : '解锁'}
         </button>

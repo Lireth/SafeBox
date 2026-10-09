@@ -102,7 +102,7 @@ describe('VaultStore', () => {
     })
 
     it('不在预置列表的分类归入 other', () => {
-      store.add(draft({ category: 'hacker' as string }))
+      store.add(draft({ category: 'hacker' }))
       expect(store.list()[0].category).toBe('other')
     })
 
@@ -187,9 +187,7 @@ describe('VaultStore', () => {
         expect(store.list()).toHaveLength(1)
         // 磁盘保持 T1，不含未持久化的 T2
         const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, 'vault.safebox'), 'utf-8'))
-        const diskJson = meta.encrypted
-          ? safeStorage.decryptString(Buffer.from(meta.payload, 'base64'))
-          : meta.payload
+        const diskJson = meta.encrypted ? safeStorage.decryptString(Buffer.from(meta.payload, 'base64')) : meta.payload
         expect(diskJson).toContain('T1')
         expect(diskJson).not.toContain('T2')
       } finally {

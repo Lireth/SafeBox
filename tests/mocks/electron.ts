@@ -8,7 +8,7 @@
 /** 可控状态：测试用例中直接修改以驱动行为 */
 export const mockState = {
   /** powerMonitor.getSystemIdleTime() 的返回值（秒） */
-  idleSeconds: 0
+  idleSeconds: 0,
 }
 
 export const safeStorage = {
@@ -19,14 +19,14 @@ export const safeStorage = {
     const text = buffer.toString('utf-8')
     if (!text.startsWith('enc:')) throw new Error('解密失败')
     return text.slice(4)
-  }
+  },
 }
 
 export const powerMonitor = {
-  getSystemIdleTime: (): number => mockState.idleSeconds
+  getSystemIdleTime: (): number => mockState.idleSeconds,
 }
 
 export const BrowserWindow = {
   /** 锁定广播时无窗口即跳过 */
-  getAllWindows: (): unknown[] => []
+  getAllWindows: (): unknown[] => [],
 }

@@ -12,7 +12,7 @@ const CHARSETS = {
   upper: 'ABCDEFGHJKLMNPQRSTUVWXYZ',
   lower: 'abcdefghijkmnopqrstuvwxyz',
   digits: '23456789',
-  symbols: '!@#$%^&*()-_=+[]{};:,.?'
+  symbols: '!@#$%^&*()-_=+[]{};:,.?',
 }
 
 /** 使用 crypto.getRandomValues 生成密码，保证选中的每类字符至少出现一次 */

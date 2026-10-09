@@ -16,5 +16,5 @@ export const HOTKEY_LIST: Array<{ keys: string; desc: string }> = [
   { keys: '↑ / ↓', desc: '在账号列表中导航' },
   { keys: 'Enter', desc: '打开选中的账号' },
   { keys: 'Esc', desc: '关闭弹窗 / 清空搜索' },
-  { keys: 'Ctrl + /', desc: '显示本帮助' }
+  { keys: 'Ctrl + /', desc: '显示本帮助' },
 ]

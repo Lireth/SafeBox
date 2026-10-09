@@ -16,7 +16,13 @@ function maskPassword(password: string): string {
   return '•'.repeat(Math.min(password.length, 12))
 }
 
-export function EntryRow({ entry, isActive = false, onOpen, onToggleFavorite, onCopy }: EntryRowProps): React.JSX.Element {
+export function EntryRow({
+  entry,
+  isActive = false,
+  onOpen,
+  onToggleFavorite,
+  onCopy,
+}: EntryRowProps): React.JSX.Element {
   const category = getCategory(entry.category)
   const initial = entry.title.charAt(0).toUpperCase() || '?'
   const avatarColor = `hsl(${category.hue} 62% 52%)`
@@ -43,19 +49,27 @@ export function EntryRow({ entry, isActive = false, onOpen, onToggleFavorite, on
             {category.label}
           </span>
         </div>
-        <div className="entry-sub">
-          {entry.username ? entry.username : maskPassword(entry.password)}
-        </div>
+        <div className="entry-sub">{entry.username ? entry.username : maskPassword(entry.password)}</div>
       </div>
 
       <div className="entry-actions" onClick={(e) => e.stopPropagation()}>
         {entry.username && (
-          <button type="button" className="icon-btn" title="复制用户名" onClick={() => onCopy(entry.username, '用户名已复制')}>
+          <button
+            type="button"
+            className="icon-btn"
+            title="复制用户名"
+            onClick={() => onCopy(entry.username, '用户名已复制')}
+          >
             <Icon name="copy" size={15} />
           </button>
         )}
         {entry.password && (
-          <button type="button" className="icon-btn" title="复制密码" onClick={() => onCopy(entry.password, '密码已复制')}>
+          <button
+            type="button"
+            className="icon-btn"
+            title="复制密码"
+            onClick={() => onCopy(entry.password, '密码已复制')}
+          >
             <Icon name="key" size={15} />
           </button>
         )}

@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
-import type { AccountEntry, BackupExportResult, BackupImportResult, EntryDraft, LoadStatus, LockState, SafeBoxAPI } from '../shared/types'
+import type {
+  AccountEntry,
+  BackupExportResult,
+  BackupImportResult,
+  LoadStatus,
+  LockState,
+  SafeBoxAPI,
+} from '../shared/types'
 
 // ============================================================
 // 预加载端实现
@@ -25,7 +32,7 @@ const INVOKE_CHANNELS = new Set([
   'lock:lock',
   'lock:unlock',
   'backup:export',
-  'backup:import'
+  'backup:import',
 ])
 
 /** invoke 封装：白名单校验 + 还原主进程抛出的真实错误信息 */
@@ -39,7 +46,8 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
     const message = err instanceof Error ? err.message : String(err)
     // Electron 包装格式："Error invoking remote method 'xxx': Error: 真实信息"
     const match = message.match(/Error invoking remote method '[^']+': (?:Error: )?([\s\S]*)$/)
-    throw new Error(match ? match[1] : message)
+    // cause 保留原始错误，便于调试
+    throw new Error(match ? match[1] : message, { cause: err })
   }
 }
 
@@ -64,7 +72,7 @@ export const electronAPI: SafeBoxAPI = {
   toggleFavorite: (id) => invoke<AccountEntry>('entries:toggle-favorite', id),
   copyText: (text) => invoke('clipboard:copy', text),
   openExternal: (url) => invoke('app:open-external', url),
-  openDataDir: () => invoke('app:open-data-dir')
+  openDataDir: () => invoke('app:open-data-dir'),
 }
 
 export type ElectronAPI = SafeBoxAPI

@@ -19,7 +19,7 @@ const EMPTY_FORM: EntryDraft = {
   username: '',
   password: '',
   notes: '',
-  favorite: false
+  favorite: false,
 }
 
 const DEFAULT_GENERATOR = { length: 16, upper: true, lower: true, digits: true, symbols: true }
@@ -188,7 +188,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
                   ['upper', '大写字母 A-Z'],
                   ['lower', '小写字母 a-z'],
                   ['digits', '数字 0-9'],
-                  ['symbols', '符号 !@#']
+                  ['symbols', '符号 !@#'],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="checkbox">
@@ -223,7 +223,11 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
         />
 
         <label className="checkbox favorite-checkbox">
-          <input type="checkbox" checked={form.favorite === true} onChange={(e) => patch({ favorite: e.target.checked })} />
+          <input
+            type="checkbox"
+            checked={form.favorite === true}
+            onChange={(e) => patch({ favorite: e.target.checked })}
+          />
           <Icon name="star" size={14} filled />
           收藏此账号
         </label>

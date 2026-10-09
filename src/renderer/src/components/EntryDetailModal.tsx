@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
@@ -23,12 +23,16 @@ export function EntryDetailModal({
   onEdit,
   onDelete,
   onToggleFavorite,
-  onCopy
+  onCopy,
 }: EntryDetailModalProps): React.JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
 
-  // 切换查看对象时重置密码可见状态
-  useEffect(() => setShowPassword(false), [entry.id])
+  // 切换查看对象时重置密码可见状态（渲染期调整状态，避免 effect 级联渲染）
+  const [prevEntryId, setPrevEntryId] = useState(entry.id)
+  if (prevEntryId !== entry.id) {
+    setPrevEntryId(entry.id)
+    setShowPassword(false)
+  }
 
   const category = getCategory(entry.category)
   const initial = entry.title.charAt(0).toUpperCase() || '?'
@@ -66,7 +70,12 @@ export function EntryDetailModal({
           <span className="detail-label">用户名</span>
           <span className="detail-value">{entry.username || <em className="detail-empty">未设置</em>}</span>
           {entry.username && (
-            <button type="button" className="icon-btn" title="复制用户名" onClick={() => onCopy(entry.username, '用户名已复制')}>
+            <button
+              type="button"
+              className="icon-btn"
+              title="复制用户名"
+              onClick={() => onCopy(entry.username, '用户名已复制')}
+            >
               <Icon name="copy" size={15} />
             </button>
           )}
@@ -75,11 +84,15 @@ export function EntryDetailModal({
         <div className="detail-field">
           <span className="detail-label">密码</span>
           <span className="detail-value mono">
-            {entry.password
-              ? showPassword
-                ? entry.password
-                : '•'.repeat(Math.min(entry.password.length, 12))
-              : <em className="detail-empty">未设置</em>}
+            {entry.password ? (
+              showPassword ? (
+                entry.password
+              ) : (
+                '•'.repeat(Math.min(entry.password.length, 12))
+              )
+            ) : (
+              <em className="detail-empty">未设置</em>
+            )}
           </span>
           {entry.password && (
             <>
@@ -91,7 +104,12 @@ export function EntryDetailModal({
               >
                 <Icon name={showPassword ? 'eye-off' : 'eye'} size={15} />
               </button>
-              <button type="button" className="icon-btn" title="复制密码" onClick={() => onCopy(entry.password, '密码已复制')}>
+              <button
+                type="button"
+                className="icon-btn"
+                title="复制密码"
+                onClick={() => onCopy(entry.password, '密码已复制')}
+              >
                 <Icon name="copy" size={15} />
               </button>
             </>

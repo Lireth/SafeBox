@@ -16,7 +16,7 @@ function entry(overrides: Partial<AccountEntry> = {}): AccountEntry {
     favorite: false,
     createdAt: NOW,
     updatedAt: NOW,
-    ...overrides
+    ...overrides,
   }
 }
 
@@ -25,7 +25,7 @@ describe('auditEntries 弱密码检测', () => {
     const report = await auditEntries([
       entry({ id: 'a', title: '弱密码', password: 'abc' }), // score 0
       entry({ id: 'b', title: '较弱', password: 'abcdefgh' }), // score 1
-      entry({ id: 'c', title: '较强', password: 'Abcdefg12!' }) // score 3
+      entry({ id: 'c', title: '较强', password: 'Abcdefg12!' }), // score 3
     ])
     expect(report.weak.map((e) => e.id)).toEqual(['a', 'b'])
   })
@@ -41,7 +41,7 @@ describe('auditEntries 重复密码检测', () => {
     const report = await auditEntries([
       entry({ id: 'a', title: 'A', password: 'same-password-1' }),
       entry({ id: 'b', title: 'B', password: 'same-password-1' }),
-      entry({ id: 'c', title: 'C', password: 'different-2' })
+      entry({ id: 'c', title: 'C', password: 'different-2' }),
     ])
     expect(report.duplicateGroups).toHaveLength(1)
     expect(report.duplicateGroups[0].map((e) => e.id)).toEqual(['a', 'b'])
@@ -53,7 +53,7 @@ describe('auditEntries 重复密码检测', () => {
       entry({ id: 'b', password: 'pwd-group-one' }),
       entry({ id: 'c', password: 'pwd-group-two-x' }),
       entry({ id: 'd', password: 'pwd-group-two-x' }),
-      entry({ id: 'e', password: 'unique-here' })
+      entry({ id: 'e', password: 'unique-here' }),
     ])
     expect(report.duplicateGroups).toHaveLength(2)
   })
@@ -69,13 +69,15 @@ describe('auditEntries 久未更新检测', () => {
     const report = await auditEntries([
       entry({ id: 'old', updatedAt: NOW - STALE_THRESHOLD_MS - 1 }),
       entry({ id: 'recent', updatedAt: NOW - STALE_THRESHOLD_MS + 86_400_000 }),
-      entry({ id: 'fresh', updatedAt: NOW })
+      entry({ id: 'fresh', updatedAt: NOW }),
     ])
     expect(report.stale.map((e) => e.id)).toEqual(['old'])
   })
 
   it('与密码强弱无关，仅看更新时间', async () => {
-    const report = await auditEntries([entry({ id: 'a', password: 'Abcdefghij1!', updatedAt: NOW - STALE_THRESHOLD_MS - 1 })])
+    const report = await auditEntries([
+      entry({ id: 'a', password: 'Abcdefghij1!', updatedAt: NOW - STALE_THRESHOLD_MS - 1 }),
+    ])
     expect(report.stale.map((e) => e.id)).toEqual(['a'])
   })
 })
@@ -84,7 +86,7 @@ describe('auditEntries 汇总', () => {
   it('全健康时三类结果为空', async () => {
     const report = await auditEntries([
       entry({ id: 'a', password: 'Abcdefghij1!' }),
-      entry({ id: 'b', password: 'Str0ng!Passphrase' })
+      entry({ id: 'b', password: 'Str0ng!Passphrase' }),
     ])
     expect(report.weak).toEqual([])
     expect(report.duplicateGroups).toEqual([])

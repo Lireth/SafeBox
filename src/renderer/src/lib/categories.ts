@@ -17,7 +17,7 @@ export const CATEGORIES: CategoryDef[] = [
   { id: 'shopping', label: '购物', icon: 'cart', hue: 28 },
   { id: 'work', label: '工作', icon: 'briefcase', hue: 260 },
   { id: 'study', label: '学习', icon: 'book', hue: 95 },
-  { id: 'other', label: '其他', icon: 'folder', hue: 210 }
+  { id: 'other', label: '其他', icon: 'folder', hue: 210 },
 ]
 
 const CATEGORY_MAP = new Map(CATEGORIES.map((c) => [c.id, c]))
@@ -26,5 +26,9 @@ export function getCategory(id: string): CategoryDef {
   return CATEGORY_MAP.get(id) ?? CATEGORIES[CATEGORIES.length - 1]
 }
 
-/** 侧栏筛选值：全部 / 收藏 / 某个分类 */
-export type FilterId = 'all' | 'favorite' | string
+/**
+ * 侧栏筛选值：'all'（全部账号）/ 'favorite'（收藏）/ 任意分类 id。
+ * 因分类 id 具备扩展性，此类型以 string 为基础；
+ * 字面量 'all' / 'favorite' 仅为可读性文档，请使用 lib 常量判断。
+ */
+export type FilterId = string

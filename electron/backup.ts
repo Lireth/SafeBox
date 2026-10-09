@@ -53,7 +53,7 @@ export function exportEncryptedBackup(store: VaultStore, targetPath: string, pas
     magic: MAGIC,
     version: FORMAT_VERSION,
     kdf: { salt: salt.toString('base64'), ...SCRYPT_PARAMS },
-    cipher: { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') }
+    cipher: { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') },
   }
 
   // 原子写入：临时文件 + 重命名
@@ -85,7 +85,7 @@ export function importEncryptedBackup(store: VaultStore, sourcePath: string, pas
     const key = deriveKey(password, Buffer.from(parsed.kdf.salt, 'base64'))
     const aad = Buffer.from(`${MAGIC}:v${parsed.version}`, 'utf-8')
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parsed.cipher.iv, 'base64'), {
-      authTagLength: 16
+      authTagLength: 16,
     })
     decipher.setAAD(aad)
     decipher.setAuthTag(Buffer.from(parsed.cipher.tag, 'base64'))
@@ -111,6 +111,6 @@ function assertPassword(password: string): void {
 function deriveKey(password: string, salt: Buffer): Buffer {
   return crypto.scryptSync(password, salt, KEY_LENGTH, {
     ...SCRYPT_PARAMS,
-    maxmem: 64 * 1024 * 1024
+    maxmem: 64 * 1024 * 1024,
   })
 }

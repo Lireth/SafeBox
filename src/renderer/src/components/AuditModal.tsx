@@ -32,7 +32,8 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
   }, [entries])
 
   const risky = report ? countRiskyEntries(report) : 0
-  const hasIssues = report !== null && (report.weak.length > 0 || report.duplicateGroups.length > 0 || report.stale.length > 0)
+  const hasIssues =
+    report !== null && (report.weak.length > 0 || report.duplicateGroups.length > 0 || report.stale.length > 0)
 
   function renderEntryItem(entry: AccountEntry, detail: string): React.JSX.Element {
     const category = getCategory(entry.category)
@@ -88,7 +89,7 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
                     <span className="audit-count">{report.weak.length}</span>
                   </h4>
                   {report.weak.map((entry) =>
-                    renderEntryItem(entry, `密码强度：${passwordStrength(entry.password).label}`)
+                    renderEntryItem(entry, `密码强度：${passwordStrength(entry.password).label}`),
                   )}
                 </section>
               )}
