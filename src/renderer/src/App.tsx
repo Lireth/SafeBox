@@ -8,8 +8,10 @@ import { LockScreen } from './components/LockScreen'
 import { PinSetupModal } from './components/PinSetupModal'
 import { BackupModal } from './components/BackupModal'
 import { AuditModal } from './components/AuditModal'
+import { HotkeyHelpModal } from './components/HotkeyHelpModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
+import { filterForDigit } from './lib/hotkeys'
 import type { AccountEntry, BackupExportResult, BackupImportResult, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
@@ -37,6 +39,9 @@ export default function App(): React.JSX.Element {
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [auditOpen, setAuditOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  /** 键盘导航在列表中的当前位置（-1 表示未选中） */
+  const [activeIndex, setActiveIndex] = useState(-1)
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
@@ -153,6 +158,80 @@ export default function App(): React.JSX.Element {
 
   const headerLabel =
     filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : getCategory(filter).label
+
+  // 全局快捷键与键盘导航（弹窗打开或锁定期间不响应）
+  useEffect(() => {
+    const anyModalOpen = !!formTarget || !!detailEntry || !!deleteTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen
+    const interactionBlocked = anyModalOpen || locked || !ready
+
+    function onKey(e: KeyboardEvent): void {
+      const target = e.target as HTMLElement | null
+      const inEditable =
+        !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+
+      // ---- Ctrl 组合键（输入框聚焦时同样生效） ----
+      if (e.ctrlKey && !interactionBlocked) {
+        if (e.key === 'n' || e.key === 'N') {
+          e.preventDefault()
+          setActiveIndex(-1)
+          setFormTarget({ mode: 'new', entry: null })
+          return
+        }
+        if (e.key === 'f' || e.key === 'F') {
+          e.preventDefault()
+          document.getElementById('search-input')?.focus()
+          return
+        }
+        if (e.key === '/') {
+          e.preventDefault()
+          setHelpOpen(true)
+          return
+        }
+        if (/^[1-9]$/.test(e.key)) {
+          e.preventDefault()
+          const filterId = filterForDigit(Number(e.key))
+          if (filterId) {
+            setFilter(filterId)
+            setActiveIndex(-1)
+          }
+          return
+        }
+        return
+      }
+
+      // ---- Esc：无弹窗时清空搜索 ----
+      if (e.key === 'Escape') {
+        if (!anyModalOpen && query) {
+          setQuery('')
+          setActiveIndex(-1)
+        }
+        return
+      }
+
+      // ---- 列表导航（仅在非输入框聚焦时） ----
+      if (inEditable || interactionBlocked) return
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveIndex((prev) => {
+          const len = visibleEntries.length
+          if (len === 0) return -1
+          if (prev === -1) return e.key === 'ArrowDown' ? 0 : len - 1
+          return Math.min(Math.max(prev + (e.key === 'ArrowDown' ? 1 : -1), 0), len - 1)
+        })
+      } else if (e.key === 'Enter' && activeIndex >= 0 && visibleEntries[activeIndex]) {
+        e.preventDefault()
+        setDetailEntry(visibleEntries[activeIndex])
+      }
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [formTarget, detailEntry, deleteTarget, pinModalOpen, backupModalOpen, auditOpen, helpOpen, locked, ready, visibleEntries, activeIndex, query])
+
+  // 筛选或搜索变化时重置键盘导航位置
+  useEffect(() => {
+    setActiveIndex(-1)
+  }, [filter, query])
 
   // ---- 动作 ----
 
@@ -290,10 +369,15 @@ export default function App(): React.JSX.Element {
             <h1 className="main-title">{headerLabel}</h1>
             <span className="main-count">{visibleEntries.length} 个账号</span>
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => setFormTarget({ mode: 'new', entry: null })}>
-            <Icon name="plus" size={16} />
-            添加账号
-          </button>
+          <div className="main-heading-actions">
+            <button type="button" className="icon-btn" title="快捷键说明（Ctrl+/）" onClick={() => setHelpOpen(true)}>
+              <Icon name="keyboard" size={16} />
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => setFormTarget({ mode: 'new', entry: null })}>
+              <Icon name="plus" size={16} />
+              添加账号
+            </button>
+          </div>
         </header>
 
         <div className="entry-list">
@@ -318,10 +402,11 @@ export default function App(): React.JSX.Element {
               <p>换个关键词或切换分类试试</p>
             </div>
           ) : (
-            visibleEntries.map((entry) => (
+            visibleEntries.map((entry, index) => (
               <EntryRow
                 key={entry.id}
                 entry={entry}
+                isActive={index === activeIndex}
                 onOpen={setDetailEntry}
                 onToggleFavorite={(e) => void handleToggleFavorite(e)}
                 onCopy={handleCopy}
@@ -382,6 +467,8 @@ export default function App(): React.JSX.Element {
           }}
         />
       )}
+
+      {helpOpen && <HotkeyHelpModal onClose={() => setHelpOpen(false)} />}
 
       {toast && (
         <div className={`toast ${toast.type === 'error' ? 'toast-error' : ''}`} role="status">

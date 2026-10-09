@@ -33,6 +33,7 @@ export type IconName =
   | 'archive'
   | 'download'
   | 'upload'
+  | 'keyboard'
 
 const PATHS: Record<IconName, React.ReactNode> = {
   lock: (
@@ -194,6 +195,12 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <path d="M17 8l-5-5-5 5" />
       <path d="M12 3v12" />
+    </>
+  ),
+  keyboard: (
+    <>
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M6 8h0M10 8h0M14 8h0M18 8h0M6 12h0M18 12h0M8 16h8" />
     </>
   )
 }

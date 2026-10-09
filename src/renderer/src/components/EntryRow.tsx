@@ -4,6 +4,8 @@ import type { AccountEntry } from '../../../../shared/types'
 
 interface EntryRowProps {
   entry: AccountEntry
+  /** 键盘导航当前选中（高亮显示） */
+  isActive?: boolean
   onOpen: (entry: AccountEntry) => void
   onToggleFavorite: (entry: AccountEntry) => void
   onCopy: (text: string, label: string) => void
@@ -14,13 +16,17 @@ function maskPassword(password: string): string {
   return '•'.repeat(Math.min(password.length, 12))
 }
 
-export function EntryRow({ entry, onOpen, onToggleFavorite, onCopy }: EntryRowProps): React.JSX.Element {
+export function EntryRow({ entry, isActive = false, onOpen, onToggleFavorite, onCopy }: EntryRowProps): React.JSX.Element {
   const category = getCategory(entry.category)
   const initial = entry.title.charAt(0).toUpperCase() || '?'
   const avatarColor = `hsl(${category.hue} 62% 52%)`
 
   return (
-    <div className="entry-row" onClick={() => onOpen(entry)} role="button" tabIndex={0}
+    <div
+      className={`entry-row ${isActive ? 'is-active' : ''}`}
+      onClick={() => onOpen(entry)}
+      role="button"
+      tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter') onOpen(entry)
       }}

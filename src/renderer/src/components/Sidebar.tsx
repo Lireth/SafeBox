@@ -78,6 +78,7 @@ export function Sidebar({
       <div className="search-box">
         <Icon name="search" size={15} className="search-icon" />
         <input
+          id="search-input"
           type="text"
           className="search-input"
           placeholder="搜索名称、用户名、网址…"
