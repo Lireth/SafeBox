@@ -36,11 +36,31 @@ export interface LoadStatus {
   backupFile?: string
 }
 
+/** 应用锁定状态 */
+export interface LockState {
+  /** 是否已设置锁定 PIN */
+  pinEnabled: boolean
+  /** 当前是否处于锁定态 */
+  locked: boolean
+}
+
 export interface SafeBoxAPI {
   /** 列出所有账号 */
   listEntries(): Promise<AccountEntry[]>
   /** 获取启动时数据加载状态（broken 表示文件损坏已自动备份） */
   getLoadStatus(): Promise<LoadStatus>
+  /** 获取应用锁定状态 */
+  getLockState(): Promise<LockState>
+  /** 设置 / 修改锁定 PIN（已启用时需验证旧 PIN） */
+  setupLockPin(oldPin: string | undefined, newPin: string): Promise<void>
+  /** 清除锁定 PIN（需验证旧 PIN） */
+  clearLockPin(oldPin: string): Promise<void>
+  /** 立即锁定（需已设置 PIN） */
+  lockNow(): Promise<void>
+  /** 校验 PIN 并解锁 */
+  unlockApp(pin: string): Promise<void>
+  /** 订阅锁定状态变化，返回取消订阅函数 */
+  onLockChanged(listener: (locked: boolean) => void): () => void
   addEntry(draft: EntryDraft): Promise<AccountEntry>
   updateEntry(id: string, draft: EntryDraft): Promise<AccountEntry>
   deleteEntry(id: string): Promise<void>

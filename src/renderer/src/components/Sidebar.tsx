@@ -7,12 +7,27 @@ interface SidebarProps {
   entries: AccountEntry[]
   filter: FilterId
   query: string
+  pinEnabled: boolean
   onFilterChange: (filter: FilterId) => void
   onQueryChange: (query: string) => void
   onAdd: () => void
+  /** 立即锁定（已启用 PIN 时显示） */
+  onLock: () => void
+  /** 打开锁定 PIN 设置弹窗（未启用时显示） */
+  onSetupPin: () => void
 }
 
-export function Sidebar({ entries, filter, query, onFilterChange, onQueryChange, onAdd }: SidebarProps): React.JSX.Element {
+export function Sidebar({
+  entries,
+  filter,
+  query,
+  pinEnabled,
+  onFilterChange,
+  onQueryChange,
+  onAdd,
+  onLock,
+  onSetupPin
+}: SidebarProps): React.JSX.Element {
   const [showClear, setShowClear] = useState(false)
 
   const counts = useMemo(() => {
@@ -89,6 +104,17 @@ export function Sidebar({ entries, filter, query, onFilterChange, onQueryChange,
           <Icon name="plus" size={16} />
           添加账号
         </button>
+        {pinEnabled ? (
+          <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onLock} title="Ctrl+L">
+            <Icon name="lock" size={15} />
+            立即锁定
+          </button>
+        ) : (
+          <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onSetupPin}>
+            <Icon name="key" size={15} />
+            设置锁定
+          </button>
+        )}
       </div>
     </aside>
   )

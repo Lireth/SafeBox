@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc'
+import { LockManager } from './lock'
 import { VaultStore } from './vault'
 
 // 是否为开发模式（由 npm script 注入 VITE_DEV_SERVER_URL）
@@ -8,8 +9,10 @@ const isDev = !!process.env.VITE_DEV_SERVER_URL
 
 // 本地数据存储：文件位于系统用户数据目录（Windows: %APPDATA%/safebox）
 const store = new VaultStore(app.getPath('userData'))
+// 应用锁定（PIN + 空闲自动锁定），校验串与数据文件同目录
+const lock = new LockManager(app.getPath('userData'))
 
-function createMainWindow(): void {
+function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -40,6 +43,8 @@ function createMainWindow(): void {
   } else {
     void win.loadFile(path.join(__dirname, '../dist/index.html'))
   }
+
+  return win
 }
 
 // 单实例锁：第二个实例立即退出，防止多实例并发写入 vault.safebox 导致数据覆盖
@@ -58,8 +63,12 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     store.load()
-    registerIpcHandlers(store)
+    lock.init()
+    registerIpcHandlers(store, lock)
     createMainWindow()
+    // 已设置 PIN 时启动即锁定，防止无人值守泄露
+    lock.lock(store)
+    lock.startIdleMonitor(store)
 
     app.on('activate', () => {
       // macOS: 点击 Dock 图标时若无窗口则重建

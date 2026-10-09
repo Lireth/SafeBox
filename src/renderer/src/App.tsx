@@ -4,6 +4,8 @@ import { EntryRow } from './components/EntryRow'
 import { EntryFormModal } from './components/EntryFormModal'
 import { EntryDetailModal } from './components/EntryDetailModal'
 import { ConfirmModal } from './components/ConfirmModal'
+import { LockScreen } from './components/LockScreen'
+import { PinSetupModal } from './components/PinSetupModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import type { AccountEntry, EntryDraft } from '../../../electron/api'
@@ -18,6 +20,9 @@ export default function App(): React.JSX.Element {
   const [entries, setEntries] = useState<AccountEntry[]>([])
   /** 非 null 表示数据文件损坏已备份，展示持久警示条（值为备份文件名） */
   const [loadWarning, setLoadWarning] = useState<string | null>(null)
+  const [locked, setLocked] = useState(false)
+  const [pinEnabled, setPinEnabled] = useState(false)
+  const [pinModalOpen, setPinModalOpen] = useState(false)
   const [filter, setFilter] = useState<FilterId>('all')
   const [query, setQuery] = useState('')
   const [formTarget, setFormTarget] = useState<FormTarget | null>(null)
@@ -55,6 +60,63 @@ export default function App(): React.JSX.Element {
       cancelled = true
     }
   }, [])
+
+  // 锁定状态：启动查询 + 订阅主进程广播
+  useEffect(() => {
+    let cancelled = false
+    void window.safebox
+      .getLockState()
+      .then((state) => {
+        if (cancelled) return
+        setPinEnabled(state.pinEnabled)
+        setLocked(state.locked)
+        if (state.locked) {
+          // 启动即锁定：确保渲染端不持有任何条目
+          setEntries([])
+          setReady(true)
+        }
+      })
+      .catch(() => {})
+    const off = window.safebox.onLockChanged((isLocked) => {
+      if (isLocked) {
+        // 清空渲染端内存中的敏感数据，关闭所有可能展示内容的弹窗
+        setLocked(true)
+        setEntries([])
+        setDetailEntry(null)
+        setDeleteTarget(null)
+        setFormTarget(null)
+      } else {
+        setLocked(false)
+        void refetchEntries()
+      }
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [])
+
+  // Ctrl+L 手动锁定（已启用 PIN 且未锁定时）
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if (e.ctrlKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault()
+        if (pinEnabled && !locked) void window.safebox.lockNow()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pinEnabled, locked])
+
+  /** 解锁 / 初始加载后拉取账号列表 */
+  async function refetchEntries(): Promise<void> {
+    try {
+      const list = await window.safebox.listEntries()
+      setEntries(list)
+    } catch {
+      // 锁定等场景下由对应流程处理
+    }
+  }
 
   function showToast(message: string): void {
     window.clearTimeout(toastTimer.current)
@@ -117,6 +179,26 @@ export default function App(): React.JSX.Element {
     showToast(message)
   }
 
+  async function handleLockNow(): Promise<void> {
+    try {
+      await window.safebox.lockNow()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '锁定失败')
+    }
+  }
+
+  async function handleSetupPin(oldPin: string | undefined, newPin: string): Promise<void> {
+    await window.safebox.setupLockPin(oldPin, newPin)
+    setPinEnabled(true)
+    showToast('锁定已启用，应用空闲或启动时将要求解锁')
+  }
+
+  async function handleClearPin(oldPin: string): Promise<void> {
+    await window.safebox.clearLockPin(oldPin)
+    setPinEnabled(false)
+    showToast('锁定已清除')
+  }
+
   // ---- 渲染 ----
 
   if (!ready) {
@@ -129,13 +211,18 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="app">
+      {locked && <LockScreen onSubmit={(pin) => window.safebox.unlockApp(pin)} />}
+
       <Sidebar
         entries={entries}
         filter={filter}
         query={query}
+        pinEnabled={pinEnabled}
         onFilterChange={setFilter}
         onQueryChange={setQuery}
         onAdd={() => setFormTarget({ mode: 'new', entry: null })}
+        onLock={() => void handleLockNow()}
+        onSetupPin={() => setPinModalOpen(true)}
       />
 
       <main className="main">
@@ -232,6 +319,15 @@ export default function App(): React.JSX.Element {
           message={`确定要删除「${deleteTarget.title}」吗？删除后无法恢复。`}
           onConfirm={() => void handleConfirmDelete()}
           onCancel={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {pinModalOpen && (
+        <PinSetupModal
+          pinEnabled={pinEnabled}
+          onClose={() => setPinModalOpen(false)}
+          onSetup={handleSetupPin}
+          onClear={handleClearPin}
         />
       )}
 

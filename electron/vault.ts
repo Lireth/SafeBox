@@ -42,6 +42,11 @@ export class VaultStore {
     return this.lastLoadResult
   }
 
+  /** 清空内存数据（应用锁定时调用），磁盘文件不受影响 */
+  clearMemory(): void {
+    this.entries = []
+  }
+
   /** 应用启动时加载数据（只需调用一次） */
   load(): void {
     this.lastLoadResult = { status: 'empty' }

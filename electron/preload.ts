@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AccountEntry, EntryDraft, LoadStatus, SafeBoxAPI } from './api'
+import type { IpcRendererEvent } from 'electron'
+import type { AccountEntry, EntryDraft, LoadStatus, LockState, SafeBoxAPI } from './api'
 
 // ============================================================
 // 预加载端实现
@@ -17,7 +18,12 @@ const INVOKE_CHANNELS = new Set([
   'clipboard:copy',
   'app:open-external',
   'app:load-status',
-  'app:open-data-dir'
+  'app:open-data-dir',
+  'lock:get-state',
+  'lock:setup',
+  'lock:clear',
+  'lock:lock',
+  'lock:unlock'
 ])
 
 /** invoke 封装：白名单校验 + 还原主进程抛出的真实错误信息 */
@@ -38,6 +44,16 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
 export const electronAPI: SafeBoxAPI = {
   listEntries: () => invoke<AccountEntry[]>('entries:list'),
   getLoadStatus: () => invoke<LoadStatus>('app:load-status'),
+  getLockState: () => invoke<LockState>('lock:get-state'),
+  setupLockPin: (oldPin, newPin) => invoke('lock:setup', oldPin, newPin),
+  clearLockPin: (oldPin) => invoke('lock:clear', oldPin),
+  lockNow: () => invoke('lock:lock'),
+  unlockApp: (pin) => invoke('lock:unlock', pin),
+  onLockChanged: (listener) => {
+    const wrapped = (_event: IpcRendererEvent, locked: boolean): void => listener(locked)
+    ipcRenderer.on('lock:changed', wrapped)
+    return () => ipcRenderer.removeListener('lock:changed', wrapped)
+  },
   addEntry: (draft) => invoke<AccountEntry>('entries:add', draft),
   updateEntry: (id, draft) => invoke<AccountEntry>('entries:update', id, draft),
   deleteEntry: (id) => invoke('entries:delete', id),
