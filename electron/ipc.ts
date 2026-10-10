@@ -8,9 +8,24 @@ import { LockManager } from './lock'
 import type { SettingsStore } from './settings'
 import { installUpdate } from './updater'
 import { VaultStore } from './vault'
+import { normalizeHttpUrl } from './url'
 
 /** 剪贴板自动清空时长（毫秒） */
 const CLIPBOARD_CLEAR_MS = 30 * 1000
+
+/** 最近一次由本应用复制的内容（O30：锁定/退出时精确回收，不误伤用户其他复制内容） */
+let lastCopied = ''
+
+/**
+ * 若剪贴板当前内容仍是本应用最近复制的值，则立即清空并解除跟踪（O30）。
+ * 锁定与退出时调用：退出后 30 秒自动清空定时器随进程消亡，不清则会无限期残留。
+ */
+export function clearTrackedClipboard(): void {
+  if (lastCopied && clipboard.readText() === lastCopied) {
+    clipboard.writeText('')
+  }
+  lastCopied = ''
+}
 
 /**
  * 应用开机自启设置到系统登录项（issue #34，Windows 注册表 Run 键）。
@@ -27,6 +42,12 @@ export function applyLoginItem(openAtLogin: boolean): void {
 }
 
 export function registerIpcHandlers(store: VaultStore, lock: LockManager, settings: SettingsStore): void {
+  /** 锁定守卫：锁定态下抛错，防止敏感数据 / 敏感操作离开主进程 */
+  const guard = <T>(handler: () => T): T => {
+    if (lock.isLocked) throw new Error('应用已锁定，请先解锁')
+    return handler()
+  }
+
   // ---- 应用状态 ----
 
   ipcMain.handle('app:load-status', () => store.getLoadStatus())
@@ -70,13 +91,14 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   ipcMain.handle('lock:get-state', () => ({ pinEnabled: lock.pinEnabled, locked: lock.isLocked }))
 
-  ipcMain.handle('lock:setup', (_event, oldPin: unknown, newPin: unknown) => {
-    lock.setupPin(oldPin, newPin)
-  })
+  // O28：锁定态下 setup / clear 同样被 guard 拒绝——二者的 oldPin 校验不走解锁退避，
+  // 若放行将构成绕过 MAX_UNLOCK_ATTEMPTS 的爆破旁路（成功一次即可自行改 PIN 解锁）。
+  // 正常 UI 在锁定态也不会触达这两个入口；lock / unlock / get-state 是解锁路径，必须放行。
+  ipcMain.handle('lock:setup', (_event, oldPin: unknown, newPin: unknown) =>
+    guard(() => lock.setupPin(oldPin, newPin)),
+  )
 
-  ipcMain.handle('lock:clear', (_event, oldPin: unknown) => {
-    lock.clearPin(oldPin, store)
-  })
+  ipcMain.handle('lock:clear', (_event, oldPin: unknown) => guard(() => lock.clearPin(oldPin, store)))
 
   ipcMain.handle('lock:lock', () => {
     lock.lock(store)
@@ -174,12 +196,6 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   // ---- 账号 CRUD（锁定期间拒绝访问数据） ----
 
-  /** 锁定守卫：锁定态下抛错，防止敏感数据离开主进程 */
-  const guard = <T>(handler: () => T): T => {
-    if (lock.isLocked) throw new Error('应用已锁定，请先解锁')
-    return handler()
-  }
-
   ipcMain.handle('entries:list', () => guard(() => store.list()))
 
   ipcMain.handle('entries:add', (_event, draft: unknown) => guard(() => store.add(draft as EntryDraft)))
@@ -217,6 +233,12 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
     if (lock.isLocked) throw new Error('应用已锁定，请先解锁')
     if (!value) return
     clipboard.writeText(value)
+    // O30 说明：曾尝试追加 Windows「ExcludeClipboardContentFromMonitorProcessing」自定义格式
+    // 以排除剪贴板历史（Win+V）/跨设备云同步，但 Electron 的 clipboard 每次 write 都整板替换
+    // （实测 Electron 37 / Windows：writeText 与 writeBuffer 无法共存，后写者独占，文本被清空），
+    // 纯 JS 无法同时携带两种格式，需原生插件实现——超出零原生依赖约束。
+    // 故以「30 秒自动清空 + 锁定/退出即清（clearTrackedClipboard）」兜底敏感残留。
+    lastCopied = value
     // 到期后若剪贴板内容未被覆盖，则自动清空，降低敏感信息残留风险
     if (clipboardTimer) clearTimeout(clipboardTimer)
     clipboardTimer = setTimeout(() => {
@@ -225,19 +247,25 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
     }, CLIPBOARD_CLEAR_MS)
   })
 
+  // 锁定时同步收口剪贴板（O30）：手动/空闲/锁屏/托盘各锁定路径统一经 lock() 触发
+  lock.onLock(clearTrackedClipboard)
+
+  // O27：与窗口 openHandler 共用同一 http/https 白名单（normalizeHttpUrl）
   ipcMain.handle('app:open-external', (_event, url: unknown) => {
-    const value = assertString(url, '网址')
-    if (!value) return
-    let parsed: URL
-    try {
-      parsed = new URL(value)
-    } catch {
-      throw new Error('网址格式错误')
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error('仅允许打开 http/https 链接')
-    }
-    void shell.openExternal(parsed.toString())
+    const normalized = normalizeHttpUrl(url)
+    if (!normalized) return
+    void shell.openExternal(normalized)
+  })
+
+  // ---- 渲染端异常采集（O32） ----
+  // 渲染端入口监听 error/unhandledrejection 后经此上报（fire-and-forget），
+  // 经 console.error 进入诊断日志的缓冲与落盘，由 logger 统一脱敏。
+  // 注意：监听必须位于渲染端主世界——脚本引擎级事件（error/unhandledrejection）
+  // 按隔离世界派发，沙箱 preload（隔离世界）收不到主世界的未捕获异常（冒烟实证）。
+  ipcMain.handle('logs:renderer-error', (_event, message: unknown, stack: unknown) => {
+    const msg = typeof message === 'string' && message ? message : '未知渲染端异常'
+    const detail = typeof stack === 'string' && stack ? `\n${stack}` : ''
+    console.error(`[renderer] ${msg}${detail}`)
   })
 }
 

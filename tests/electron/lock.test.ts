@@ -279,7 +279,7 @@ describe('LockManager', () => {
     })
   })
 
-  describe('verifyPin 无副作用身份校验（明文 CSV 导出前置，issue #32）', () => {
+  describe('verifyPin 二次身份校验（明文 CSV 导出前置，issue #32）', () => {
     it('未设置 PIN 时直接通过（调用方以 pinEnabled 区分）', () => {
       expect(() => lock.verifyPin(undefined)).not.toThrow()
       expect(() => lock.verifyPin('anything')).not.toThrow()
@@ -292,17 +292,102 @@ describe('LockManager', () => {
       expect(() => lock.verifyPin(123456)).toThrow('不正确')
     })
 
-    it('校验不改变锁定态、不消耗解锁退避配额', () => {
+    it('校验不改变锁定态、不消耗解锁退避配额（O29 后失败走独立限速）', () => {
       lock.setupPin(undefined, '123456')
       lock.lock(store)
-      // 连续错误校验 10 次：锁定态保持，且解锁失败计数不受影响
-      for (let i = 0; i < 10; i++) {
+      // 连续错误校验：前 4 次报「不正确」，第 5 次起进入独立冷却（报「频繁」）
+      for (let i = 0; i < 4; i++) {
         expect(() => lock.verifyPin('000000')).toThrow('不正确')
       }
+      expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      expect(() => lock.verifyPin('000000')).toThrow('频繁')
       expect(lock.isLocked).toBe(true)
-      // 正确 PIN 仍可立即解锁（未因 verifyPin 失败进入冷却）
+      // 解锁退避配额未受 verifyPin 失败影响：正确 PIN 仍可立即解锁
       expect(lock.unlock('123456', store)).toEqual({ ok: true })
       expect(lock.isLocked).toBe(false)
+    })
+  })
+
+  describe('verifyPin 独立限速（O29：封堵无配额校验的枚举旁路）', () => {
+    /** 设置 PIN 后连续失败 n 次 verifyPin（均在冷却触发前） */
+    function failVerify(n: number): void {
+      for (let i = 0; i < n; i++) {
+        expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      }
+    }
+
+    it('连续失败 5 次触发独立冷却：正确 PIN 在冷却期内也被拒且提示频繁', () => {
+      lock.setupPin(undefined, '123456')
+      failVerify(4)
+      // 第 5 次失败：仍报 PIN 不正确，但独立冷却已启动
+      expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      // 冷却期内即使正确 PIN 也被拦截，错误类别是「频繁」而非「不正确」
+      expect(() => lock.verifyPin('123456')).toThrow('频繁')
+    })
+
+    it('冷却到期后恢复校验；成功校验重置独立计数', () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      lock.setupPin(undefined, '123456')
+      failVerify(5)
+      vi.advanceTimersByTime(30_001)
+      // 冷却到期，正确 PIN 恢复通过
+      expect(() => lock.verifyPin('123456')).not.toThrow()
+      // 成功已重置计数：再失败 4 次不会触发冷却
+      failVerify(4)
+      expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      vi.useRealTimers()
+    })
+
+    it('与解锁退避相互独立：verify 失败不消耗解锁配额', () => {
+      lock.setupPin(undefined, '123456')
+      lock.lock(store)
+      failVerify(4)
+      // 解锁通道的 5 次配额完整：第 5 次 unlock 失败才进入解锁冷却
+      for (let i = 0; i < 4; i++) {
+        expect(lock.unlock('000000', store)).toEqual({ ok: false, code: 'PIN_WRONG' })
+      }
+      expect(lock.unlock('000000', store)).toEqual({ ok: false, code: 'COOLDOWN', retryAfterMs: 30_000 })
+    })
+
+    it('重新锁定重置独立配额（与解锁退避「每次锁定会话独立」语义一致）', () => {
+      lock.setupPin(undefined, '123456')
+      failVerify(4)
+      // 进入锁定（会话边界）→ 解锁 → 独立配额已重置
+      lock.lock(store)
+      expect(lock.unlock('123456', store)).toEqual({ ok: true })
+      failVerify(4)
+      // 第 5 次失败才再次触发冷却
+      expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      expect(() => lock.verifyPin('000000')).toThrow('频繁')
+    })
+  })
+
+  describe('锁定转场钩子（O30：剪贴板收口等附加动作）', () => {
+    it('lock() 实际进入锁定态时执行 onLock 回调，重复锁定不重复触发', () => {
+      lock.setupPin(undefined, '123456')
+      const hook = vi.fn()
+      lock.onLock(hook)
+      lock.lock(store)
+      expect(hook).toHaveBeenCalledTimes(1)
+      // 幂等锁定不重复触发
+      lock.lock(store)
+      expect(hook).toHaveBeenCalledTimes(1)
+    })
+
+    it('未设置 PIN 时锁定短路，不触发回调', () => {
+      const hook = vi.fn()
+      lock.onLock(hook)
+      lock.lock(store)
+      expect(hook).not.toHaveBeenCalled()
+    })
+
+    it('回调抛错不阻断锁定流程', () => {
+      lock.setupPin(undefined, '123456')
+      lock.onLock(() => {
+        throw new Error('hook failed')
+      })
+      expect(() => lock.lock(store)).not.toThrow()
+      expect(lock.isLocked).toBe(true)
     })
   })
 

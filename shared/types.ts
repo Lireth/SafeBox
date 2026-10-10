@@ -208,6 +208,11 @@ export interface SafeBoxAPI {
   openDataDir(): Promise<void>
   /** 导出诊断日志（弹出系统保存对话框；日志经脱敏，锁定态也可导出）（issue #35） */
   exportDiagnostics(): Promise<DiagnosticsExportResult>
+  /**
+   * 上报渲染端未捕获异常（O32）：由渲染端入口的 error/unhandledrejection 监听调用，
+   * 主进程经 logger 统一脱敏后进入诊断日志。消息与堆栈在渲染端已截断。
+   */
+  reportRendererError(message: string, stack?: string): Promise<void>
 }
 
 export type ElectronAPI = SafeBoxAPI

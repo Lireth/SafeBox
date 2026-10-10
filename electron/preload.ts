@@ -48,6 +48,7 @@ const INVOKE_CHANNELS = new Set([
   'backup:import-csv',
   'backup:export-csv',
   'logs:export',
+  'logs:renderer-error',
   'update:install'
 ])
 
@@ -105,6 +106,7 @@ export const electronAPI: SafeBoxAPI = {
   openExternal: (url) => invoke('app:open-external', url),
   openDataDir: () => invoke('app:open-data-dir'),
   exportDiagnostics: () => invoke<DiagnosticsExportResult>('logs:export'),
+  reportRendererError: (message, stack) => invoke('logs:renderer-error', message, stack),
 }
 
 export type ElectronAPI = SafeBoxAPI

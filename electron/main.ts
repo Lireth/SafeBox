@@ -1,12 +1,13 @@
 import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
-import { registerIpcHandlers, applyLoginItem } from './ipc'
+import { clearTrackedClipboard, registerIpcHandlers, applyLoginItem } from './ipc'
 import { initLogger } from './logger'
 import { LockManager } from './lock'
 import { SettingsStore } from './settings'
 import { initAutoUpdater } from './updater'
 import { destroyTray, initTray, registerGlobalLockShortcut, unregisterGlobalShortcuts } from './tray'
 import { TRASH_RETENTION_MS, VaultStore } from './vault'
+import { normalizeHttpUrl } from './url'
 
 // 「正在退出」标记：before-quit 置 true，使窗口 close 拦截不再把窗口藏回托盘
 // （否则托盘「退出」/ app.quit 会被 preventDefault 卡住）
@@ -59,9 +60,17 @@ function createMainWindow(): BrowserWindow {
 
   mainWindow = win
 
-  // 外部链接走系统默认浏览器
+  // 外部链接走系统默认浏览器，且仅放行 http/https（O27：与 openExternal IPC 共用
+  // normalizeHttpUrl 白名单，防御渲染层被攻破后借 window.open 拉起任意协议）
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    try {
+      const normalized = normalizeHttpUrl(url)
+      if (normalized) void shell.openExternal(normalized)
+      else console.warn('[main] 已拦截空外部打开请求')
+    } catch {
+      // 不落 URL 本身（查询串可能含敏感参数），仅记拦截事实
+      console.warn('[main] 已拦截非 http/https 或格式非法的外部打开请求')
+    }
     return { action: 'deny' }
   })
 
@@ -147,6 +156,8 @@ function showMainWindow(): void {
 app.on('before-quit', () => {
   // 标记正常退出，解除 close 拦截
   isQuitting = true
+  // 退出时收口剪贴板（O30）：30 秒自动清空定时器随进程消亡，主动回收本应用复制的敏感内容
+  clearTrackedClipboard()
 })
 
 app.on('will-quit', () => {

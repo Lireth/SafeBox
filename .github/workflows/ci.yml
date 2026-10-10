@@ -25,6 +25,11 @@ jobs:
       - name: 代码规范
         run: npm run lint
 
+      # 依赖漏洞门禁（P0 第四批）：高危及以上阻断 CI。
+      # GitHub runner 直连官方 registry（本地 npmmirror 镜像不支持 audit 端点）。
+      - name: 依赖漏洞审计
+        run: npm audit --audit-level=high
+
       - name: 单元测试 + 覆盖率阈值
         run: npm run test:coverage
 

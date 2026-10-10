@@ -12,6 +12,9 @@ import type { VaultStore } from './vault'
  * - 锁定态：清空 VaultStore 内存数据，数据类 IPC 在 ipc.ts 侧统一拒绝
  * - 暴力破解防护：解锁连续失败达阈值后指数退避（冷却期内不校验摘要），
  *   计数与退避仅存内存（重启重置，但重启后仍面对启动即锁）
+ * - 敏感操作前置校验（verifyPin）独立限速（O29）：不消耗解锁配额，
+ *   但连续失败同样进入独立冷却，封堵绕过解锁退避的枚举旁路
+ * - 锁定转场钩子（O30）：进入锁定态时同步执行附加动作（如剪贴板收口）
  */
 
 /**
@@ -47,6 +50,12 @@ export class LockManager {
   private failCount = 0
   /** 退避冷却截止时间戳（毫秒）；0 表示无冷却 */
   private cooldownUntil = 0
+  /** verifyPin 独立失败计数（O29）：与解锁退避相互独立 */
+  private verifyFailCount = 0
+  /** verifyPin 独立冷却截止时间戳（毫秒）；0 表示无冷却 */
+  private verifyCooldownUntil = 0
+  /** 锁定转场附加动作（O30：剪贴板收口等），lock() 实际进入锁定态时同步调用 */
+  private lockHooks: Array<() => void> = []
   /** powerMonitor 'lock-screen' 事件监听器（注册后保留引用以便移除） */
   private lockScreenHandler: (() => void) | null = null
 
@@ -127,20 +136,52 @@ export class LockManager {
     this.locked = true
     this.failCount = 0
     this.cooldownUntil = 0
+    // verifyPin 独立配额随锁定会话重置（O29）
+    this.verifyFailCount = 0
+    this.verifyCooldownUntil = 0
     store.clearMemory()
+    // 锁定转场附加动作（O30：剪贴板收口等），在广播前完成；单点失败不阻塞锁定
+    for (const hook of this.lockHooks) {
+      try {
+        hook()
+      } catch {
+        // 忽略：锁定本身不可被附加动作失败阻断
+      }
+    }
     console.info('[lock] 应用已进入锁定态')
     this.broadcast(true)
+  }
+
+  /** 注册锁定转场回调（实际进入锁定态时同步执行；已锁定时的重复 lock 不再触发） */
+  onLock(hook: () => void): void {
+    this.lockHooks.push(hook)
   }
 
   /**
    * 无副作用校验 PIN（明文 CSV 导出等敏感操作前的二次身份确认，issue #32）。
    * 不改变锁定态、不消耗解锁退避配额；PIN 错误抛中文错误。
+   * O29 独立限速：本方法原设计不限速，但「无配额」意味着可绕过解锁退避
+   * 高频枚举短 PIN——连续失败达阈值后进入独立冷却（与 unlock 退避互不占用），
+   * 校验成功（证明知晓 PIN，排除爆破嫌疑）即重置独立计数。
    */
   verifyPin(pin: unknown): void {
     if (this.pinHash === null) return // 未设置 PIN：无需校验（调用方以 pinEnabled 区分）
+    if (Date.now() < this.verifyCooldownUntil) {
+      const remainSec = Math.ceil((this.verifyCooldownUntil - Date.now()) / 1000)
+      throw new Error(`尝试过于频繁，请 ${remainSec} 秒后再试`)
+    }
     if (typeof pin !== 'string' || this.hash(pin) !== this.pinHash) {
+      this.verifyFailCount++
+      if (this.verifyFailCount >= MAX_UNLOCK_ATTEMPTS) {
+        this.verifyCooldownUntil = Date.now() + Math.min(
+          BASE_COOLDOWN_MS * 2 ** (this.verifyFailCount - MAX_UNLOCK_ATTEMPTS),
+          MAX_COOLDOWN_MS,
+        )
+      }
       throw new Error('PIN 不正确')
     }
+    // 校验成功：重置独立计数（冷却随时间自然到期，无需主动清除）
+    this.verifyFailCount = 0
   }
 
   /**
@@ -173,6 +214,9 @@ export class LockManager {
     this.locked = false
     this.failCount = 0
     this.cooldownUntil = 0
+    // 成功解锁证明知晓 PIN：verifyPin 独立配额一并重置（O29）
+    this.verifyFailCount = 0
+    this.verifyCooldownUntil = 0
     store.load()
     this.broadcast(false)
     return { ok: true }
