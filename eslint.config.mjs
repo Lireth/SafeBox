@@ -35,7 +35,7 @@ export default tseslint.config(
     }
   },
   {
-    files: ['electron/**/*.ts', 'tests/**/*.ts'],
+    files: ['electron/**/*.ts', 'tests/**/*.ts', 'tests/**/*.tsx'],
     rules: {
       // 主进程与测试中的 console 输出是有意为之（生产日志 / 断言上下文）
       'no-console': 'off',

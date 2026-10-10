@@ -1,16 +1,40 @@
 import path from 'node:path'
 import { defineConfig } from 'vitest/config'
 
-// 单元测试配置：electron 主进程模块依赖运行时 API，alias 到替身模块；
+// ============================================================
+// 单元测试配置：双 project 环境分离（issue #29）
+// - node：主进程模块（electron 裸导入经 alias 指向替身）+ 渲染端纯逻辑
+// - dom：渲染端组件测试（jsdom + Testing Library），setup 注入 WebCrypto
+// `npm test` 一条命令同时跑两个 project
 // electron-updater 的替身由 updater.test.ts 内 vi.mock + vi.hoisted 提供（不用 alias，避免双模块实例）
+// ============================================================
 export default defineConfig({
-  resolve: {
-    alias: {
-      electron: path.resolve(__dirname, 'tests/mocks/electron.ts')
-    }
-  },
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'node'
-  }
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['tests/electron/**/*.test.ts', 'tests/renderer/**/*.test.ts'],
+        },
+        resolve: {
+          alias: {
+            electron: path.resolve(__dirname, 'tests/mocks/electron.ts'),
+          },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'dom',
+          environment: 'jsdom',
+          include: ['tests/components/**/*.test.tsx'],
+          setupFiles: ['tests/setup.dom.ts'],
+        },
+        // 组件测试的 .tsx 走 React 19 automatic JSX 运行时（无需 import React）
+        esbuild: { jsx: 'automatic' },
+      },
+    ],
+  },
 })
