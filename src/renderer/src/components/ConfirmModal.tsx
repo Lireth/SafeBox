@@ -20,7 +20,7 @@ export function ConfirmModal({
 }: ConfirmModalProps): React.JSX.Element {
   useLang()
   return (
-    <Modal onClose={onCancel}>
+    <Modal onClose={onCancel} ariaLabel={title}>
       <div className="confirm-body">
         <div className="confirm-icon">
           <Icon name="trash" size={20} />

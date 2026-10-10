@@ -46,13 +46,20 @@ export function TrashRow({ entry, isActive = false, onRestore, onPurge }: TrashR
       </div>
 
       <div className="entry-actions trash-row-actions">
-        <button type="button" className="icon-btn" title={t('trashRow.restore')} onClick={() => onRestore(entry)}>
+        <button
+          type="button"
+          className="icon-btn"
+          title={t('trashRow.restore')}
+          aria-label={`${t('trashRow.restore')} - ${entry.title}`}
+          onClick={() => onRestore(entry)}
+        >
           <Icon name="refresh" size={15} />
         </button>
         <button
           type="button"
           className="icon-btn trash-row-purge"
           title={t('trashRow.purge')}
+          aria-label={`${t('trashRow.purge')} - ${entry.title}`}
           onClick={() => onPurge(entry)}
         >
           <Icon name="trash" size={15} />

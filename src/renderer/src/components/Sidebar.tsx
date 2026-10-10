@@ -91,6 +91,7 @@ export function Sidebar({
           type="text"
           className="search-input"
           placeholder={t('sidebar.searchPlaceholder')}
+          aria-label={t('sidebar.searchPlaceholder')}
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
         />

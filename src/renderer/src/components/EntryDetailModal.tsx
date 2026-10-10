@@ -52,7 +52,7 @@ export function EntryDetailModal({
   const avatarColor = `hsl(${category.hue} 62% 52%)`
 
   return (
-    <Modal wide onClose={onClose}>
+    <Modal wide onClose={onClose} ariaLabel={entry.title}>
       <div className="detail-header">
         <div className="entry-avatar lg" style={{ background: avatarColor }}>
           {initial}
