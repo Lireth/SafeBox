@@ -272,6 +272,46 @@ describe('VaultStore', () => {
       expect(store.list()).toHaveLength(1)
     })
 
+    it('restoreAll 清除全部软删除标记并返回数量（F19）', () => {
+      const a = store.add(draft({ title: 'A' }))
+      const b = store.add(draft({ title: 'B' }))
+      const keep = store.add(draft({ title: '未删除' }))
+      store.remove(a.id)
+      store.remove(b.id)
+      expect(store.restoreAll()).toBe(2)
+      const list = store.list()
+      expect(list).toHaveLength(3)
+      expect(list.find((e) => e.id === a.id)?.deletedAt).toBeUndefined()
+      expect(list.find((e) => e.id === b.id)?.deletedAt).toBeUndefined()
+      expect(list.find((e) => e.id === keep.id)?.deletedAt).toBeUndefined()
+      // 回收站已空：再恢复返回 0 且不产生变更
+      expect(store.restoreAll()).toBe(0)
+    })
+
+    it('purgeAll 仅物理删除回收站条目，未删除数据不受影响（F19）', () => {
+      const keep = store.add(draft({ title: '保留' }))
+      const del1 = store.add(draft({ title: '删除1' }))
+      const del2 = store.add(draft({ title: '删除2' }))
+      store.remove(del1.id)
+      store.remove(del2.id)
+      expect(store.purgeAll()).toBe(2)
+      expect(store.list().map((e) => e.id)).toEqual([keep.id])
+      // 回收站已空：再清空返回 0
+      expect(store.purgeAll()).toBe(0)
+      // 加密落盘往返：清空结果持久化（模拟重启）
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      expect(reloaded.list().map((e) => e.id)).toEqual([keep.id])
+    })
+
+    it('restoreAll / purgeAll 空回收站直接返回 0', () => {
+      store.add(draft({ title: '未删除' }))
+      expect(store.restoreAll()).toBe(0)
+      expect(store.purgeAll()).toBe(0)
+      // 全部条目未删除：列表不变
+      expect(store.list()).toHaveLength(1)
+    })
+
     it('磁盘上软删除超期的条目在启动清理中被物理移除', () => {
       const now = Date.now()
       const base = { category: 'dev', url: '', username: '', password: '', notes: '', favorite: false }

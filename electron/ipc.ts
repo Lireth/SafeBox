@@ -194,9 +194,15 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   ipcMain.handle('entries:restore', (_event, id: unknown) => guard(() => store.restore(assertString(id, 'id'))))
 
+  // 恢复回收站全部账号（F19）：返回恢复数量
+  ipcMain.handle('entries:restore-all', () => guard(() => store.restoreAll()))
+
   ipcMain.handle('entries:purge', (_event, id: unknown) => {
     guard(() => store.purge(assertString(id, 'id')))
   })
+
+  // 清空回收站（F19）：物理删除全部回收站条目，返回删除数量
+  ipcMain.handle('entries:purge-all', () => guard(() => store.purgeAll()))
 
   ipcMain.handle('entries:toggle-favorite', (_event, id: unknown) =>
     guard(() => store.toggleFavorite(assertString(id, 'id'))),

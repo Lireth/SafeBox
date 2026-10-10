@@ -190,6 +190,35 @@ export class VaultStore {
     return restored
   }
 
+  /**
+   * 恢复回收站全部账号（F19）：清除所有软删除标记，返回恢复数量。
+   * 回收站为空时不落盘（无变更），返回 0。
+   */
+  restoreAll(): number {
+    const trashIds = new Set(this.entries.filter((e) => e.deletedAt).map((e) => e.id))
+    if (trashIds.size === 0) return 0
+    const next = this.entries.map((e) => {
+      if (!trashIds.has(e.id)) return e
+      const restored = { ...e }
+      delete restored.deletedAt
+      return restored
+    })
+    this.commit(next)
+    return trashIds.size
+  }
+
+  /**
+   * 清空回收站（F19）：物理删除所有软删除条目，返回删除数量。
+   * 仅删除带 deletedAt 标记的条目——未删除数据不受影响（与 purge 的防误删语义一致）。
+   * 回收站为空时不落盘，返回 0。
+   */
+  purgeAll(): number {
+    const expiredIds = new Set(this.entries.filter((e) => e.deletedAt).map((e) => e.id))
+    if (expiredIds.size === 0) return 0
+    this.commit(this.entries.filter((e) => !expiredIds.has(e.id)))
+    return expiredIds.size
+  }
+
   /** 彻底删除回收站中的账号（物理删除，不可恢复）；不允许绕过软删除直接物理删除 */
   purge(id: string): void {
     const index = this.entries.findIndex((e) => e.id === id)

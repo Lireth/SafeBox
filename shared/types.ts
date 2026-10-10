@@ -193,8 +193,12 @@ export interface SafeBoxAPI {
   deleteEntry(id: string): Promise<void>
   /** 从回收站恢复账号（清除软删除标记） */
   restoreEntry(id: string): Promise<AccountEntry>
+  /** 恢复回收站全部账号（清除所有软删除标记），返回恢复数量（F19） */
+  restoreAllEntries(): Promise<number>
   /** 彻底删除回收站中的账号（物理删除，无法恢复） */
   purgeEntry(id: string): Promise<void>
+  /** 清空回收站（物理删除全部回收站条目，未删除数据不受影响），返回删除数量（F19） */
+  purgeAllEntries(): Promise<number>
   toggleFavorite(id: string): Promise<AccountEntry>
   /** 复制到系统剪贴板（主进程侧，30 秒后自动清空） */
   copyText(text: string): Promise<void>

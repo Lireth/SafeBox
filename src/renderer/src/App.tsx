@@ -61,6 +61,8 @@ export default function App(): React.JSX.Element {
   const [deleteTarget, setDeleteTarget] = useState<AccountEntry | null>(null)
   /** 待彻底删除的条目（回收站内操作，物理删除不可恢复） */
   const [purgeTarget, setPurgeTarget] = useState<AccountEntry | null>(null)
+  /** 清空回收站确认弹窗（物理删除不可恢复，F19） */
+  const [purgeAllOpen, setPurgeAllOpen] = useState(false)
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
@@ -133,6 +135,8 @@ export default function App(): React.JSX.Element {
         setDetailEntry(null)
         setDeleteTarget(null)
         setFormTarget(null)
+        setPurgeTarget(null)
+        setPurgeAllOpen(false)
       } else {
         setLocked(false)
         void refetchEntries()
@@ -207,7 +211,7 @@ export default function App(): React.JSX.Element {
   // 全局快捷键与键盘导航（弹窗打开或锁定期间不响应）
   useEffect(() => {
     const anyModalOpen =
-      !!formTarget || !!detailEntry || !!deleteTarget || !!purgeTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen || settingsOpen
+      !!formTarget || !!detailEntry || !!deleteTarget || !!purgeTarget || purgeAllOpen || pinModalOpen || backupModalOpen || auditOpen || helpOpen || settingsOpen
     const interactionBlocked = anyModalOpen || locked || !ready
 
     function onKey(e: KeyboardEvent): void {
@@ -277,6 +281,7 @@ export default function App(): React.JSX.Element {
     detailEntry,
     deleteTarget,
     purgeTarget,
+    purgeAllOpen,
     pinModalOpen,
     backupModalOpen,
     auditOpen,
@@ -352,6 +357,34 @@ export default function App(): React.JSX.Element {
       showToast(t('toast.purged'))
     } catch (err) {
       showToast(errorMessage(err, t('toast.deleteFailed')), 'error')
+    }
+  }
+
+  /** 恢复回收站全部账号（F19）：批量恢复可逆（可再删），无需强确认 */
+  async function handleRestoreAll(): Promise<void> {
+    try {
+      const count = await window.safebox.restoreAllEntries()
+      if (count === 0) return
+      await refetchEntries()
+      showToast(t('toast.restoredAll', { count }))
+    } catch (err) {
+      showToast(errorMessage(err, t('toast.restoreAllFailed')), 'error')
+    }
+  }
+
+  /** 清空回收站（F19）：物理删除不可恢复，由 ConfirmModal 强确认后调用 */
+  async function handleConfirmPurgeAll(): Promise<void> {
+    try {
+      const count = await window.safebox.purgeAllEntries()
+      if (count === 0) {
+        setPurgeAllOpen(false)
+        return
+      }
+      setEntries((prev) => prev.filter((e) => !e.deletedAt))
+      setPurgeAllOpen(false)
+      showToast(t('toast.purgedAll', { count }))
+    } catch (err) {
+      showToast(errorMessage(err, t('toast.purgeAllFailed')), 'error')
     }
   }
 
@@ -491,6 +524,18 @@ export default function App(): React.JSX.Element {
             <span className="main-count">{t('header.accountCount', { count: visibleEntries.length })}</span>
           </div>
           <div className="main-heading-actions">
+            {filter === 'trash' && trashEntries.length > 0 && (
+              <>
+                <button type="button" className="btn btn-ghost" onClick={() => void handleRestoreAll()}>
+                  <Icon name="refresh" size={15} />
+                  {t('header.restoreAll')}
+                </button>
+                <button type="button" className="btn btn-ghost trash-purge-all" onClick={() => setPurgeAllOpen(true)}>
+                  <Icon name="trash" size={15} />
+                  {t('header.purgeAll')}
+                </button>
+              </>
+            )}
             <button type="button" className="icon-btn" title={t('header.helpTitle')} onClick={() => setHelpOpen(true)}>
               <Icon name="keyboard" size={16} />
             </button>
@@ -600,6 +645,16 @@ export default function App(): React.JSX.Element {
           confirmText={t('confirm.purgeConfirm')}
           onConfirm={() => void handleConfirmPurge()}
           onCancel={() => setPurgeTarget(null)}
+        />
+      )}
+
+      {purgeAllOpen && (
+        <ConfirmModal
+          title={t('confirm.purgeAllTitle')}
+          message={t('confirm.purgeAllMsg', { count: trashEntries.length })}
+          confirmText={t('confirm.purgeConfirm')}
+          onConfirm={() => void handleConfirmPurgeAll()}
+          onCancel={() => setPurgeAllOpen(false)}
         />
       )}
 

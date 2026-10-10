@@ -22,6 +22,9 @@ const lock = new LockManager(app.getPath('userData'))
 // 应用设置（关闭最小化到托盘等偏好），同目录 settings.json
 const settings = new SettingsStore(app.getPath('userData'))
 
+/** 回收站过期清理定时兜底间隔（毫秒，1 小时，F19） */
+const TRASH_SWEEP_INTERVAL_MS = 60 * 60 * 1000
+
 /** 主窗口引用（托盘唤起 / 关闭拦截使用） */
 let mainWindow: BrowserWindow | null = null
 /** 托盘是否可用（图标加载失败时禁止「关闭最小化到托盘」，避免窗口无处可去） */
@@ -95,6 +98,11 @@ if (!app.requestSingleInstanceLock()) {
     // 物理清理回收站中超过保留期（30 天）的条目
     const purged = store.purgeExpired(TRASH_RETENTION_MS)
     if (purged > 0) console.info(`[vault] 已自动清理回收站中 ${purged} 条超期条目`)
+    // 回收站过期清理定时兜底（F19）：托盘常驻用户长期不重启时，超期条目仍会被周期清理
+    setInterval(() => {
+      const swept = store.purgeExpired(TRASH_RETENTION_MS)
+      if (swept > 0) console.info(`[vault] 已定时清理回收站中 ${swept} 条超期条目`)
+    }, TRASH_SWEEP_INTERVAL_MS)
     lock.init()
     registerIpcHandlers(store, lock, settings)
     // 开机自启自愈（issue #34）：系统登录项实际状态与设置不一致时对齐

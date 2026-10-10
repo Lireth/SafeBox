@@ -337,6 +337,15 @@ textarea {
   filter: brightness(1.06);
 }
 
+/* 清空回收站（头部 ghost 按钮，危险语义着色，F19） */
+.btn.trash-purge-all {
+  color: var(--danger);
+}
+
+.btn.trash-purge-all:hover {
+  background: var(--danger-soft);
+}
+
 .btn-danger-ghost {
   color: var(--danger);
   background: transparent;
