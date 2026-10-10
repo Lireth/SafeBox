@@ -2,8 +2,14 @@ import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc'
 import { LockManager } from './lock'
+import { SettingsStore } from './settings'
 import { initAutoUpdater } from './updater'
+import { destroyTray, initTray, registerGlobalLockShortcut, unregisterGlobalShortcuts } from './tray'
 import { TRASH_RETENTION_MS, VaultStore } from './vault'
+
+// 「正在退出」标记：before-quit 置 true，使窗口 close 拦截不再把窗口藏回托盘
+// （否则托盘「退出」/ app.quit 会被 preventDefault 卡住）
+let isQuitting = false
 
 // 是否为开发模式（由 npm script 注入 VITE_DEV_SERVER_URL）
 const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -12,6 +18,13 @@ const isDev = !!process.env.VITE_DEV_SERVER_URL
 const store = new VaultStore(app.getPath('userData'))
 // 应用锁定（PIN + 空闲自动锁定），校验串与数据文件同目录
 const lock = new LockManager(app.getPath('userData'))
+// 应用设置（关闭最小化到托盘等偏好），同目录 settings.json
+const settings = new SettingsStore(app.getPath('userData'))
+
+/** 主窗口引用（托盘唤起 / 关闭拦截使用） */
+let mainWindow: BrowserWindow | null = null
+/** 托盘是否可用（图标加载失败时禁止「关闭最小化到托盘」，避免窗口无处可去） */
+let trayReady = false
 
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -31,6 +44,16 @@ function createMainWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+
+  // 开启「关闭最小化到托盘」时：点 × 只隐藏窗口，进程与托盘常驻
+  win.on('close', (e) => {
+    if (!win.isDestroyed() && settings.settings.minimizeToTray && trayReady && !isQuitting) {
+      e.preventDefault()
+      win.hide()
+    }
+  })
+
+  mainWindow = win
 
   // 外部链接走系统默认浏览器
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -65,17 +88,26 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(() => {
     store.load()
+    settings.load()
     // 物理清理回收站中超过保留期（30 天）的条目
     const purged = store.purgeExpired(TRASH_RETENTION_MS)
     if (purged > 0) console.info(`[vault] 已自动清理回收站中 ${purged} 条超期条目`)
     lock.init()
-    registerIpcHandlers(store, lock)
+    registerIpcHandlers(store, lock, settings)
     createMainWindow()
     // 已设置 PIN 时启动即锁定，防止无人值守泄露
     lock.lock(store)
     lock.startIdleMonitor(store)
     // 自动更新检查（开发环境自动跳过）
     initAutoUpdater()
+
+    // 系统托盘：显示 / 立即锁定 / 退出（图标加载失败则托盘不可用）
+    trayReady = initTray({
+      onShow: showMainWindow,
+      onLock: () => lock.lock(store),
+    })
+    // 全局 Ctrl+Alt+L：焦点在任意应用时也能一键锁定
+    registerGlobalLockShortcut(() => lock.lock(store))
 
     app.on('activate', () => {
       // macOS: 点击 Dock 图标时若无窗口则重建
@@ -84,7 +116,29 @@ if (!app.requestSingleInstanceLock()) {
   })
 }
 
+/** 托盘「显示主窗口」：还原并聚焦；窗口已关闭（未开启托盘常驻时）则重建 */
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createMainWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+app.on('before-quit', () => {
+  // 标记正常退出，解除 close 拦截
+  isQuitting = true
+})
+
+app.on('will-quit', () => {
+  // 退出时注销全局快捷键并移除托盘
+  unregisterGlobalShortcuts()
+  destroyTray()
+})
+
 app.on('window-all-closed', () => {
-  // Windows / Linux: 关闭所有窗口即退出
+  // Windows / Linux: 关闭所有窗口即退出；开启托盘常驻时窗口仅隐藏，不会走到这里
   if (process.platform !== 'darwin') app.quit()
 })

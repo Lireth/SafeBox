@@ -22,6 +22,8 @@ interface SidebarProps {
   onBackup: () => void
   /** 打开安全体检面板 */
   onAudit: () => void
+  /** 打开设置弹窗 */
+  onSettings: () => void
 }
 
 export function Sidebar({
@@ -37,6 +39,7 @@ export function Sidebar({
   onSetupPin,
   onBackup,
   onAudit,
+  onSettings,
 }: SidebarProps): React.JSX.Element {
   const [showClear, setShowClear] = useState(false)
 
@@ -134,6 +137,10 @@ export function Sidebar({
         <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onAudit}>
           <Icon name="shield" size={15} />
           安全体检
+        </button>
+        <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onSettings}>
+          <Icon name="settings" size={15} />
+          设置
         </button>
       </div>
     </aside>

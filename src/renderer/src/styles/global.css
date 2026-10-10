@@ -234,6 +234,13 @@ textarea {
   margin-top: 4px;
 }
 
+/* 设置弹窗中的开关行 */
+.settings-row {
+  font-size: 13.5px;
+  color: var(--text);
+  padding: 2px 0 6px;
+}
+
 .range {
   width: 100%;
   margin: 6px 0 2px;

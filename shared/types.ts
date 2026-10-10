@@ -69,6 +69,12 @@ export interface LockState {
   locked: boolean
 }
 
+/** 应用设置（主进程持久化于 userData/settings.json，非敏感数据） */
+export interface AppSettings {
+  /** 关闭主窗口时最小化到系统托盘；false（默认）保持「关闭窗口即退出」 */
+  minimizeToTray: boolean
+}
+
 /** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */
 export interface BackupExportResult {
   canceled: boolean
@@ -119,6 +125,10 @@ export interface SafeBoxAPI {
   unlockApp(pin: string): Promise<void>
   /** 订阅锁定状态变化，返回取消订阅函数 */
   onLockChanged(listener: (locked: boolean) => void): () => void
+  /** 读取应用设置（关闭最小化到托盘等偏好） */
+  getSettings(): Promise<AppSettings>
+  /** 局部更新应用设置，返回落盘后的完整设置 */
+  updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>
   /** 导出加密备份（弹出系统保存对话框，口令 + AES-256-GCM） */
   exportEncryptedBackup(password: string): Promise<BackupExportResult>
   /** 导入加密备份（弹出系统打开对话框，导入前自动备份当前数据） */

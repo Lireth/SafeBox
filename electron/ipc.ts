@@ -2,15 +2,16 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
 import { mapCsvEntries, parseCsvRows } from './csv'
-import type { EntryDraft } from '../shared/types'
+import type { AppSettings, EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
+import type { SettingsStore } from './settings'
 import { installUpdate } from './updater'
 import { VaultStore } from './vault'
 
 /** 剪贴板自动清空时长（毫秒） */
 const CLIPBOARD_CLEAR_MS = 30 * 1000
 
-export function registerIpcHandlers(store: VaultStore, lock: LockManager): void {
+export function registerIpcHandlers(store: VaultStore, lock: LockManager, settings: SettingsStore): void {
   // ---- 应用状态 ----
 
   ipcMain.handle('app:load-status', () => store.getLoadStatus())
@@ -19,6 +20,15 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager): void 
     // 返回空字符串表示成功，否则为平台错误信息
     const error = await shell.openPath(app.getPath('userData'))
     if (error) throw new Error(`无法打开数据目录: ${error}`)
+  })
+
+  // ---- 应用设置（非敏感偏好，锁定态也可读写） ----
+
+  ipcMain.handle('settings:get', () => settings.settings)
+
+  ipcMain.handle('settings:update', (_event, patch: unknown) => {
+    const p = (patch && typeof patch === 'object' ? patch : {}) as Partial<AppSettings>
+    return settings.update(p)
   })
 
   // ---- 应用锁定 ----

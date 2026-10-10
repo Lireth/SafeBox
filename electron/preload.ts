@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
 import type {
   AccountEntry,
+  AppSettings,
   BackupExportResult,
   BackupImportResult,
   CsvImportResult,
@@ -34,6 +35,8 @@ const INVOKE_CHANNELS = new Set([
   'lock:clear',
   'lock:lock',
   'lock:unlock',
+  'settings:get',
+  'settings:update',
   'backup:export',
   'backup:import',
   'backup:import-csv',
@@ -69,6 +72,8 @@ export const electronAPI: SafeBoxAPI = {
     ipcRenderer.on('lock:changed', wrapped)
     return () => ipcRenderer.removeListener('lock:changed', wrapped)
   },
+  getSettings: () => invoke<AppSettings>('settings:get'),
+  updateSettings: (patch) => invoke<AppSettings>('settings:update', patch),
   exportEncryptedBackup: (password) => invoke<BackupExportResult>('backup:export', password),
   importEncryptedBackup: (password) => invoke<BackupImportResult>('backup:import', password),
   importCsv: () => invoke<CsvImportResult>('backup:import-csv'),

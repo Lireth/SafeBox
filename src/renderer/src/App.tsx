@@ -10,6 +10,7 @@ import { PinSetupModal } from './components/PinSetupModal'
 import { BackupModal } from './components/BackupModal'
 import { AuditModal } from './components/AuditModal'
 import { HotkeyHelpModal } from './components/HotkeyHelpModal'
+import { SettingsModal } from './components/SettingsModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import { filterForDigit } from './lib/hotkeys'
@@ -46,6 +47,7 @@ export default function App(): React.JSX.Element {
   const [backupModalOpen, setBackupModalOpen] = useState(false)
   const [auditOpen, setAuditOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   /** 非 null 表示新版本已下载就绪（值为版本号） */
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
@@ -191,7 +193,7 @@ export default function App(): React.JSX.Element {
   // 全局快捷键与键盘导航（弹窗打开或锁定期间不响应）
   useEffect(() => {
     const anyModalOpen =
-      !!formTarget || !!detailEntry || !!deleteTarget || !!purgeTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen
+      !!formTarget || !!detailEntry || !!deleteTarget || !!purgeTarget || pinModalOpen || backupModalOpen || auditOpen || helpOpen || settingsOpen
     const interactionBlocked = anyModalOpen || locked || !ready
 
     function onKey(e: KeyboardEvent): void {
@@ -265,6 +267,7 @@ export default function App(): React.JSX.Element {
     backupModalOpen,
     auditOpen,
     helpOpen,
+    settingsOpen,
     locked,
     ready,
     visibleEntries,
@@ -419,6 +422,7 @@ export default function App(): React.JSX.Element {
         onSetupPin={() => setPinModalOpen(true)}
         onBackup={() => setBackupModalOpen(true)}
         onAudit={() => setAuditOpen(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
 
       <main className="main">
@@ -606,6 +610,8 @@ export default function App(): React.JSX.Element {
       )}
 
       {helpOpen && <HotkeyHelpModal onClose={() => setHelpOpen(false)} />}
+
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
 
       {toast && (
         <div className={`toast ${toast.type === 'error' ? 'toast-error' : ''}`} role="status">

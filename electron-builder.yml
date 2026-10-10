@@ -13,6 +13,8 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
+  # 托盘图标运行时加载需要（buildResources 默认不会打进 asar）
+  - build/icon.ico
 asar: true
 win:
   # 由 scripts/generate-icon.js 生成（多尺寸 PNG-in-ICO）
