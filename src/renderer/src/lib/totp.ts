@@ -124,8 +124,40 @@ function base32Decode(secret: string): Uint8Array<ArrayBuffer> {
 }
 
 /**
+ * WebCrypto HMAC key 缓存（O26）：key 派生（Base32 解码 + importKey）相对昂贵，
+ * 详情页每秒 tick 重算验证码时无需重复派生——按「规范化秘钥 + 算法」复用 CryptoKey
+ * （period/digits 仅影响窗口计数与截断位数，不参与 key 派生，故不进缓存键）。
+ * 密码管理器条目数量级有限，超上限整体清空重建（防御表单反复试错的极端积累）。
+ */
+const keyCache = new Map<string, CryptoKey>()
+const KEY_CACHE_LIMIT = 100
+
+/** 测试辅助：清空 key 缓存（生产代码勿用，缓存对调用方透明） */
+export function resetTotpKeyCache(): void {
+  keyCache.clear()
+}
+
+/** 取（或派生并缓存）HMAC 签名用的 CryptoKey */
+async function getCachedKey(secret: string, algorithm: TotpAlgorithm): Promise<CryptoKey> {
+  const cacheKey = `${secret}|${algorithm}`
+  const cached = keyCache.get(cacheKey)
+  if (cached) return cached
+  const key = await crypto.subtle.importKey(
+    'raw',
+    base32Decode(secret),
+    { name: 'HMAC', hash: { SHA1: 'SHA-1', SHA256: 'SHA-256', SHA512: 'SHA-512' }[algorithm] },
+    false,
+    ['sign'],
+  )
+  if (keyCache.size >= KEY_CACHE_LIMIT) keyCache.clear()
+  keyCache.set(cacheKey, key)
+  return key
+}
+
+/**
  * 计算当前 TOTP 码（含前导零）。now 为毫秒时间戳。
  * options 可指定周期 / 位数 / 算法（缺省 30s / 6 位 / SHA1）。
+ * HMAC key 按秘钥+算法缓存（O26），重复调用仅剩 sign + 截断。
  */
 export async function totpCode(
   secret: string,
@@ -136,16 +168,13 @@ export async function totpCode(
   const digits = options?.digits ?? TOTP_DIGITS
   const algorithm = options?.algorithm ?? 'SHA1'
   const counter = Math.floor(now / 1000 / period)
-  return hotp(base32Decode(normalizeBase32(secret)), counter, digits, algorithm)
+  const normalized = normalizeBase32(secret)
+  const key = await getCachedKey(normalized, algorithm)
+  return hotpSign(key, counter, digits)
 }
 
-/** RFC 4226 HOTP：HMAC（算法可选）+ 动态截断 */
-async function hotp(
-  key: Uint8Array<ArrayBuffer>,
-  counter: number,
-  digits: number,
-  algorithm: TotpAlgorithm,
-): Promise<string> {
+/** RFC 4226 HOTP 签名与动态截断（key 已派生）：8 字节大端计数器 → HMAC → 截断 */
+async function hotpSign(key: CryptoKey, counter: number, digits: number): Promise<string> {
   // 8 字节大端计数器
   const message = new Uint8Array(8)
   let rest = counter
@@ -154,14 +183,7 @@ async function hotp(
     rest = Math.floor(rest / 256)
   }
 
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    key,
-    { name: 'HMAC', hash: { SHA1: 'SHA-1', SHA256: 'SHA-256', SHA512: 'SHA-512' }[algorithm] },
-    false,
-    ['sign'],
-  )
-  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, message))
+  const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, message))
 
   // 动态截断（RFC 4226 5.3）
   const offset = mac[mac.length - 1] & 0x0f

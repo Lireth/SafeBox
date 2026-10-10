@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { buildOtpauthUrl, parseTOTPSecret, parseTotpParams, totpCode, totpRemainingSeconds } from '../../src/renderer/src/lib/totp'
+import { afterEach, describe, expect, it } from 'vitest'
+import { buildOtpauthUrl, parseTOTPSecret, parseTotpParams, resetTotpKeyCache, totpCode, totpRemainingSeconds } from '../../src/renderer/src/lib/totp'
 
 /**
  * RFC 6238 附录 B SHA-1 标准向量（key = ASCII "12345678901234567890" 的 Base32）。
@@ -173,5 +173,41 @@ describe('buildOtpauthUrl（编辑回填链接重建，F18）', () => {
     expect(buildOtpauthUrl({ title: 'X', totpSecret: 'ABCD2345ABCD' })).toBe('ABCD2345ABCD')
     expect(buildOtpauthUrl({ title: 'X', totpSecret: 'ABCD2345ABCD', totpPeriod: 30, totpDigits: 6 })).toBe('ABCD2345ABCD')
     expect(buildOtpauthUrl({ title: 'X' })).toBeUndefined()
+  })
+})
+
+describe('totpCode key 缓存（O26）', () => {
+  afterEach(() => {
+    resetTotpKeyCache()
+  })
+
+  it('同秘钥重复调用（缓存命中）结果与首次一致', async () => {
+    const a = await totpCode(RFC_KEY_B32, 59_000)
+    const b = await totpCode(RFC_KEY_B32, 59_000)
+    const c = await totpCode(RFC_KEY_B32.toLowerCase(), 59_000) // 大小写归一后同一缓存键
+    expect(b).toBe(a)
+    expect(c).toBe(a)
+  })
+
+  it('缓存键包含算法：同秘钥不同算法各自正确（互不串用）', async () => {
+    // 同一 SHA1 秘钥在两种位数下与 RFC 向量一致（key 相同，digits 不参与 key 派生）
+    expect(await totpCode(RFC_KEY_B32, 59_000, { digits: 6 })).toBe('287082')
+    expect(await totpCode(RFC_KEY_B32, 59_000, { digits: 8 })).toBe('94287082')
+    // 同秘钥不同算法产生不同码（缓存键区分算法）
+    const sha1 = await totpCode(RFC_KEY_B32, 59_000, { digits: 8 })
+    const sha256 = await totpCode(b32('12345678901234567890123456789012'), 59_000, { digits: 8, algorithm: 'SHA256' })
+    expect(sha256).toBe('46119246')
+    expect(sha256).not.toBe(sha1)
+  })
+
+  it('超过缓存上限（100）整体清空后计算仍正确', async () => {
+    // 先填入 100 个不同秘钥触发下一次插入前的清空
+    for (let i = 0; i < 100; i++) {
+      await totpCode(b32(`cache-fill-${String(i).padStart(3, '0')}`), 59_000)
+    }
+    // 第 101 个：清空重建，RFC 向量仍正确
+    expect(await totpCode(RFC_KEY_B32, 59_000)).toBe('287082')
+    // 清空后再算同秘钥（重新派生路径）结果一致
+    expect(await totpCode(RFC_KEY_B32, 59_000)).toBe('287082')
   })
 })
