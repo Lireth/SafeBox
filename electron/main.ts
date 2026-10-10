@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
 import { registerIpcHandlers, applyLoginItem } from './ipc'
+import { initLogger } from './logger'
 import { LockManager } from './lock'
 import { SettingsStore } from './settings'
 import { initAutoUpdater } from './updater'
@@ -87,6 +88,8 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   void app.whenReady().then(() => {
+    // 诊断日志层最先初始化：后续所有 console.* 进入环形缓冲并落盘（issue #35）
+    initLogger(app.getPath('userData'))
     store.load()
     settings.load()
     // 物理清理回收站中超过保留期（30 天）的条目

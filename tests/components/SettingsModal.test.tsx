@@ -12,12 +12,14 @@ import type { AppSettings } from '../../shared/types'
 function mockSafebox(settings: AppSettings, locale = 'zh-CN') {
   const updateSettings = vi.fn<(patch: Partial<AppSettings>) => Promise<AppSettings>>()
   const getLocale = vi.fn<() => Promise<string>>()
+  const exportDiagnostics = vi.fn<() => Promise<{ canceled: boolean; path?: string }>>().mockResolvedValue({ canceled: true })
   updateSettings.mockImplementation((patch) => Promise.resolve({ ...settings, ...patch }))
   getLocale.mockResolvedValue(locale)
   const api: Record<string, unknown> = {
     getSettings: vi.fn<() => Promise<AppSettings>>().mockResolvedValue(settings),
     updateSettings,
     getLocale,
+    exportDiagnostics,
     onLockChanged: vi.fn(() => () => {}),
     onUpdateReady: vi.fn(() => () => {}),
   }
@@ -26,7 +28,7 @@ function mockSafebox(settings: AppSettings, locale = 'zh-CN') {
     api[m] = vi.fn()
   }
   vi.stubGlobal('safebox', api)
-  return { updateSettings, getLocale }
+  return { updateSettings, getLocale, exportDiagnostics }
 }
 
 beforeEach(() => {
@@ -106,5 +108,38 @@ describe('SettingsModal 开机自启开关（issue #34）', () => {
     // 勾选自启后 → 联动提示消失
     await user.click(screen.getByRole('checkbox', { name: '开机自动启动秘匣' }))
     await waitFor(() => expect(screen.queryByText(/配合开机自启可获得常驻后台/)).toBeNull())
+  })
+})
+
+describe('SettingsModal 诊断日志导出（issue #35）', () => {
+  it('点击导出成功：显示落盘路径提示', async () => {
+    const user = userEvent.setup()
+    const { exportDiagnostics } = mockSafebox(baseSettings())
+    exportDiagnostics.mockResolvedValue({ canceled: false, path: 'D:\\diag.txt' })
+    render(<SettingsModal onClose={() => {}} />)
+
+    await user.click(await screen.findByRole('button', { name: '导出诊断日志' }))
+    expect(await screen.findByText(/诊断日志已导出到：D:\\diag.txt/)).toBeInTheDocument()
+  })
+
+  it('对话框取消：不显示提示', async () => {
+    const user = userEvent.setup()
+    const { exportDiagnostics } = mockSafebox(baseSettings())
+    exportDiagnostics.mockResolvedValue({ canceled: true })
+    render(<SettingsModal onClose={() => {}} />)
+
+    await user.click(await screen.findByRole('button', { name: '导出诊断日志' }))
+    await waitFor(() => expect(exportDiagnostics).toHaveBeenCalled())
+    expect(screen.queryByText(/诊断日志已导出/)).toBeNull()
+  })
+
+  it('导出失败：显示错误信息', async () => {
+    const user = userEvent.setup()
+    const { exportDiagnostics } = mockSafebox(baseSettings())
+    exportDiagnostics.mockRejectedValue(new Error('磁盘写入失败'))
+    render(<SettingsModal onClose={() => {}} />)
+
+    await user.click(await screen.findByRole('button', { name: '导出诊断日志' }))
+    expect(await screen.findByText('磁盘写入失败')).toBeInTheDocument()
   })
 })

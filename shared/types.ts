@@ -121,6 +121,13 @@ export interface CsvExportResult {
   count?: number
 }
 
+/** 诊断日志导出结果（日志已脱敏；取消时 canceled=true，不产生文件） */
+export interface DiagnosticsExportResult {
+  canceled: boolean
+  /** 保存路径（取消时缺省） */
+  path?: string
+}
+
 export interface SafeBoxAPI {
   /** 列出所有账号 */
   listEntries(): Promise<AccountEntry[]>
@@ -171,6 +178,8 @@ export interface SafeBoxAPI {
   openExternal(url: string): Promise<void>
   /** 在系统文件管理器中打开用户数据目录（定位备份文件） */
   openDataDir(): Promise<void>
+  /** 导出诊断日志（弹出系统保存对话框；日志经脱敏，锁定态也可导出）（issue #35） */
+  exportDiagnostics(): Promise<DiagnosticsExportResult>
 }
 
 export type ElectronAPI = SafeBoxAPI

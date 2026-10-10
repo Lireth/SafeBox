@@ -21,7 +21,9 @@ export const mockState = {
 
 export const app = {
   /** 模拟打包环境（updater 以此判断是否跳过更新检查） */
-  isPackaged: false
+  isPackaged: false,
+  /** 应用版本号（logger 启动横幅使用） */
+  getVersion: (): string => '0.1.0-test',
 }
 
 export const safeStorage = {

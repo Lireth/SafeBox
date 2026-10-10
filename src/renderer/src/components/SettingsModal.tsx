@@ -13,6 +13,8 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  /** 诊断日志导出成功提示（显示落盘路径） */
+  const [diagNotice, setDiagNotice] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -41,6 +43,22 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
         const locale = await window.safebox.getLocale()
         setLang(resolveLang(next.language, locale))
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('settings.saveFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 导出诊断日志（issue #35）：主进程弹保存对话框，落盘已脱敏缓冲 */
+  async function exportDiagnostics(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setDiagNotice('')
+    try {
+      const result = await window.safebox.exportDiagnostics()
+      if (!result.canceled && result.path) setDiagNotice(t('settings.diagnosticsExported', { path: result.path }))
     } catch (err) {
       setError(err instanceof Error ? err.message : t('settings.saveFailed'))
     } finally {
@@ -93,6 +111,21 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
             <option value="zh">{t('settings.langZh')}</option>
             <option value="en">{t('settings.langEn')}</option>
           </select>
+
+          <p className="field-label">
+            {t('settings.diagnosticsLabel')}
+          </p>
+          <p className="gen-hint">{t('settings.diagnosticsHint')}</p>
+          <button
+            id="settings-export-diagnostics"
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy}
+            onClick={() => void exportDiagnostics()}
+          >
+            {t('settings.exportDiagnostics')}
+          </button>
+          {diagNotice && <p className="gen-hint">{diagNotice}</p>}
 
           {error && <p className="form-error">{error}</p>}
         </>

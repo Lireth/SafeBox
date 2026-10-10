@@ -2,6 +2,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
 import { buildCsv, mapCsvEntries, parseCsvRows } from './csv'
+import { exportDiagnostics } from './logger'
 import type { AppSettings, EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import type { SettingsStore } from './settings'
@@ -50,6 +51,20 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   // 系统区域设置（如 zh-CN / en-US），供渲染端「跟随系统」语言检测（issue #33）
   ipcMain.handle('app:get-locale', () => app.getLocale())
+
+  // ---- 诊断日志导出（issue #35，非敏感数据：logger 已脱敏，锁定态也可导出） ----
+
+  ipcMain.handle('logs:export', async () => {
+    const win = BrowserWindow.getAllWindows()[0] ?? null
+    const result = await dialog.showSaveDialog(win, {
+      title: '导出诊断日志',
+      defaultPath: `safebox-diagnostics-${new Date().toISOString().slice(0, 10)}.txt`,
+      filters: [{ name: '文本文件', extensions: ['txt'] }],
+    })
+    if (result.canceled || !result.filePath) return { canceled: true }
+    fs.writeFileSync(result.filePath, exportDiagnostics(), 'utf-8')
+    return { canceled: false, path: result.filePath }
+  })
 
   // ---- 应用锁定 ----
 

@@ -7,6 +7,7 @@ import type {
   BackupImportResult,
   CsvExportResult,
   CsvImportResult,
+  DiagnosticsExportResult,
   LoadStatus,
   LockState,
   SafeBoxAPI,
@@ -43,6 +44,7 @@ const INVOKE_CHANNELS = new Set([
   'backup:import',
   'backup:import-csv',
   'backup:export-csv',
+  'logs:export',
   'update:install'
 ])
 
@@ -97,6 +99,7 @@ export const electronAPI: SafeBoxAPI = {
   copyText: (text) => invoke('clipboard:copy', text),
   openExternal: (url) => invoke('app:open-external', url),
   openDataDir: () => invoke('app:open-data-dir'),
+  exportDiagnostics: () => invoke<DiagnosticsExportResult>('logs:export'),
 }
 
 export type ElectronAPI = SafeBoxAPI
