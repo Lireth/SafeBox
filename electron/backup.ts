@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import type { AccountEntry } from '../shared/types'
+import { SafeBoxError } from './errors'
 import type { VaultStore } from './vault'
 
 /**
@@ -71,13 +72,13 @@ export function importEncryptedBackup(store: VaultStore, sourcePath: string, pas
   try {
     parsed = JSON.parse(fs.readFileSync(sourcePath, 'utf-8')) as ExportFile
   } catch {
-    throw new Error('备份文件格式错误')
+    throw new SafeBoxError('BACKUP_FORMAT', '备份文件格式错误')
   }
   if (parsed?.magic !== MAGIC || typeof parsed.version !== 'number') {
-    throw new Error('不是有效的 SafeBox 加密备份文件')
+    throw new SafeBoxError('BACKUP_NOT_VALID', '不是有效的 SafeBox 加密备份文件')
   }
   if (parsed.version > FORMAT_VERSION) {
-    throw new Error('备份文件版本过新，请先升级应用')
+    throw new SafeBoxError('BACKUP_VERSION_NEW', '备份文件版本过新，请先升级应用')
   }
 
   let entries: AccountEntry[]
@@ -95,7 +96,7 @@ export function importEncryptedBackup(store: VaultStore, sourcePath: string, pas
     entries = inner.entries as AccountEntry[]
   } catch {
     // 统一口令错误提示，不泄露具体失败环节
-    throw new Error('口令错误或备份文件已损坏')
+    throw new SafeBoxError('BACKUP_DECRYPT_FAIL', '口令错误或备份文件已损坏')
   }
 
   const result = store.mergeEntries(entries)
@@ -104,7 +105,7 @@ export function importEncryptedBackup(store: VaultStore, sourcePath: string, pas
 
 function assertPassword(password: string): void {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
-    throw new Error(`口令长度至少 ${MIN_PASSWORD_LENGTH} 个字符`)
+    throw new SafeBoxError('PASSWORD_TOO_SHORT', `口令长度至少 ${MIN_PASSWORD_LENGTH} 个字符`, { min: MIN_PASSWORD_LENGTH })
   }
 }
 

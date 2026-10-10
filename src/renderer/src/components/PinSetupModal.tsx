@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { t, useLang } from '../lib/i18n'
+import { resolveIpcError } from '../lib/ipcError'
 
 interface PinSetupModalProps {
   /** 当前是否已设置 PIN（决定是否需要旧 PIN 与是否提供清除入口） */
@@ -53,7 +54,7 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
       await onSetup(pinEnabled ? oldPin.trim() : undefined, newPin.trim())
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('pinSetup.setupFailed'))
+      setError(resolveIpcError(err, t('pinSetup.setupFailed')))
       setBusy(false)
     }
   }
@@ -66,7 +67,7 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
       await onClear(oldPin.trim())
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('pinSetup.clearFailed'))
+      setError(resolveIpcError(err, t('pinSetup.clearFailed')))
       setBusy(false)
     }
   }

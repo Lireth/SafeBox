@@ -3,11 +3,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { BrowserWindow, powerMonitor, safeStorage } from 'electron'
 import type { UnlockResult } from '../shared/types'
+import { SafeBoxError } from './errors'
 import type { VaultStore } from './vault'
 
 /**
  * 应用锁定（一期：会话级锁定）
- * - PIN 校验串 = safeStorage 加密的 SHA-256 摘要，磁盘与内存均不存明文 PIN
+ * - PIN 校验串 = safeStorage 加密的摘要，磁盘与内存均不存明文 PIN；
+ *   v2 起摘要为 scrypt 加盐派生（O33），v1（单轮 SHA-256）历史文件在首次校验成功后静默升级
  * - 锁定时机：启动即锁（已设 PIN 时）/ 手动锁定 / 系统空闲超时
  * - 锁定态：清空 VaultStore 内存数据，数据类 IPC 在 ipc.ts 侧统一拒绝
  * - 暴力破解防护：解锁连续失败达阈值后指数退避（冷却期内不校验摘要），
@@ -35,15 +37,22 @@ const MAX_COOLDOWN_MS = 5 * 60 * 1000
 
 /** PIN 校验串磁盘文件结构 */
 interface PinFile {
-  v: 1
-  /** base64(safeStorage(SHA-256(PIN) hex)) */
+  /** v1: SHA-256 单轮摘要（历史版本）；v2: scrypt 加盐摘要（O33） */
+  v: 1 | 2
+  /** v1: base64(safeStorage(SHA-256(PIN) hex))；v2: base64(safeStorage(scrypt(PIN, salt) hex)) */
   payload: string
+  /** v2 专有：KDF 盐（base64） */
+  salt?: string
 }
 
 export class LockManager {
   private readonly file: string
-  /** SHA-256 hex 摘要；null 表示未设置 PIN */
+  /** 当前生效的 PIN 摘要（hex）；null 表示未设置 PIN */
   private pinHash: string | null = null
+  /** 摘要算法：sha256（v1 历史文件）| scrypt（v2，O33） */
+  private pinKdf: 'sha256' | 'scrypt' = 'sha256'
+  /** scrypt 盐（v2 专有；pinKdf=scrypt 时恒非空） */
+  private pinSalt: Buffer | null = null
   private locked = false
   private pollTimer: NodeJS.Timeout | null = null
   /** 解锁连续失败次数（成功解锁 / 清除 PIN / 重新锁定后重置） */
@@ -74,11 +83,17 @@ export class LockManager {
   /** 启动时读取 PIN 校验串（只需调用一次） */
   init(): void {
     this.pinHash = null
+    this.pinKdf = 'sha256'
+    this.pinSalt = null
     try {
       if (!fs.existsSync(this.file)) return
       const meta = JSON.parse(fs.readFileSync(this.file, 'utf-8')) as PinFile
       if (!meta?.payload || !safeStorage.isEncryptionAvailable()) return
       this.pinHash = safeStorage.decryptString(Buffer.from(meta.payload, 'base64'))
+      if (meta.v === 2 && meta.salt) {
+        this.pinKdf = 'scrypt'
+        this.pinSalt = Buffer.from(meta.salt, 'base64')
+      }
     } catch {
       // 校验串损坏：视为未设置并清理坏文件，避免锁死
       try {
@@ -90,32 +105,28 @@ export class LockManager {
     }
   }
 
-  /** 设置 / 修改 PIN（已启用时需验证旧 PIN） */
+  /** 设置 / 修改 PIN（已启用时需验证旧 PIN）；恒以 v2（scrypt 加盐）落盘 */
   setupPin(oldPin: unknown, newPin: unknown): void {
     if (this.pinHash !== null) {
-      if (typeof oldPin !== 'string' || this.hash(oldPin) !== this.pinHash) {
-        throw new Error('当前 PIN 不正确')
+      if (!this.matches(oldPin)) {
+        throw new SafeBoxError('PIN_WRONG_CURRENT', '当前 PIN 不正确')
       }
     }
     const pin = typeof newPin === 'string' ? newPin.trim() : ''
     if (pin.length < PIN_MIN || pin.length > PIN_MAX) {
-      throw new Error(`PIN 长度需为 ${PIN_MIN}-${PIN_MAX} 个字符`)
+      throw new SafeBoxError('PIN_LENGTH', `PIN 长度需为 ${PIN_MIN}-${PIN_MAX} 个字符`, { min: PIN_MIN, max: PIN_MAX })
     }
     if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('系统加密不可用，无法设置锁定 PIN')
+      throw new SafeBoxError('ENCRYPTION_UNAVAILABLE', '系统加密不可用，无法设置锁定 PIN')
     }
-    const payload = safeStorage.encryptString(this.hash(pin)).toString('base64')
-    const tmp = `${this.file}.tmp`
-    fs.writeFileSync(tmp, JSON.stringify({ v: 1, payload } satisfies PinFile), 'utf-8')
-    fs.renameSync(tmp, this.file)
-    this.pinHash = this.hash(pin)
+    this.persistPin(pin)
   }
 
   /** 清除锁定（需验证旧 PIN），同时解锁并重载数据 */
   clearPin(oldPin: unknown, store: VaultStore): void {
-    if (this.pinHash === null) throw new Error('尚未设置锁定 PIN')
-    if (typeof oldPin !== 'string' || this.hash(oldPin) !== this.pinHash) {
-      throw new Error('PIN 不正确')
+    if (this.pinHash === null) throw new SafeBoxError('NO_PIN_SET', '尚未设置锁定 PIN')
+    if (!this.matches(oldPin)) {
+      throw new SafeBoxError('PIN_WRONG', 'PIN 不正确')
     }
     try {
       fs.unlinkSync(this.file)
@@ -123,6 +134,8 @@ export class LockManager {
       // 删除失败不阻塞流程
     }
     this.pinHash = null
+    this.pinKdf = 'sha256'
+    this.pinSalt = null
     if (this.locked) {
       this.locked = false
       store.load()
@@ -168,9 +181,9 @@ export class LockManager {
     if (this.pinHash === null) return // 未设置 PIN：无需校验（调用方以 pinEnabled 区分）
     if (Date.now() < this.verifyCooldownUntil) {
       const remainSec = Math.ceil((this.verifyCooldownUntil - Date.now()) / 1000)
-      throw new Error(`尝试过于频繁，请 ${remainSec} 秒后再试`)
+      throw new SafeBoxError('PIN_RATE_LIMITED', `尝试过于频繁，请 ${remainSec} 秒后再试`, { seconds: remainSec })
     }
-    if (typeof pin !== 'string' || this.hash(pin) !== this.pinHash) {
+    if (!this.matches(pin)) {
       this.verifyFailCount++
       if (this.verifyFailCount >= MAX_UNLOCK_ATTEMPTS) {
         this.verifyCooldownUntil = Date.now() + Math.min(
@@ -178,10 +191,11 @@ export class LockManager {
           MAX_COOLDOWN_MS,
         )
       }
-      throw new Error('PIN 不正确')
+      throw new SafeBoxError('PIN_WRONG', 'PIN 不正确')
     }
-    // 校验成功：重置独立计数（冷却随时间自然到期，无需主动清除）
+    // 校验成功：重置独立计数（冷却随时间自然到期，无需主动清除）；v1 摘要顺路升级
     this.verifyFailCount = 0
+    if (typeof pin === 'string') this.upgradeDigest(pin)
   }
 
   /**
@@ -201,7 +215,7 @@ export class LockManager {
       // 冷却到期：仅清除冷却标记，保留 failCount 使后续失败退避翻倍
       this.cooldownUntil = 0
     }
-    if (typeof pin !== 'string' || this.hash(pin) !== this.pinHash) {
+    if (!this.matches(pin)) {
       this.failCount++
       if (this.failCount >= MAX_UNLOCK_ATTEMPTS) {
         // 第 5 次失败退避 30s，第 6 次 60s……封顶 5 分钟
@@ -214,9 +228,10 @@ export class LockManager {
     this.locked = false
     this.failCount = 0
     this.cooldownUntil = 0
-    // 成功解锁证明知晓 PIN：verifyPin 独立配额一并重置（O29）
+    // 成功解锁证明知晓 PIN：verifyPin 独立配额一并重置（O29）；v1 摘要顺路升级（O33）
     this.verifyFailCount = 0
     this.verifyCooldownUntil = 0
+    if (typeof pin === 'string') this.upgradeDigest(pin)
     store.load()
     this.broadcast(false)
     return { ok: true }
@@ -269,8 +284,51 @@ export class LockManager {
     }
   }
 
+  /** v1 摘要：单轮 SHA-256（无盐）；仅在读取历史 v1 文件时使用 */
   private hash(input: string): string {
     return crypto.createHash('sha256').update(input, 'utf8').digest('hex')
+  }
+
+  /**
+   * v2 摘要：scrypt 加盐（O33）。参数与加密备份（backup.ts）一致（N=16384, r=8, p=1），
+   * 单次派生约 50ms——解锁/校验体感无差别；而 lock.pin 被同用户态恶意进程解开
+   * （DPAPI 被绕过）后，短 PIN 的离线穷举成本提升数个数量级。
+   */
+  private scryptHex(input: string, salt: Buffer): string {
+    return crypto.scryptSync(input, salt, 32, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('hex')
+  }
+
+  /** 当前摘要算法下的 PIN 校验（unlock / verifyPin / clearPin / setupPin 旧值共用） */
+  private matches(pin: unknown): boolean {
+    if (typeof pin !== 'string' || this.pinHash === null) return false
+    if (this.pinKdf === 'scrypt') return this.scryptHex(pin, this.pinSalt as Buffer) === this.pinHash
+    return this.hash(pin) === this.pinHash
+  }
+
+  /** 以 v2（scrypt 加盐）写入校验串并更新内存状态（setupPin / upgradeDigest 共用） */
+  private persistPin(pin: string): void {
+    const salt = crypto.randomBytes(16)
+    const digest = this.scryptHex(pin, salt)
+    const payload = safeStorage.encryptString(digest).toString('base64')
+    const tmp = `${this.file}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify({ v: 2, payload, salt: salt.toString('base64') } satisfies PinFile), 'utf-8')
+    fs.renameSync(tmp, this.file)
+    this.pinHash = digest
+    this.pinKdf = 'scrypt'
+    this.pinSalt = salt
+  }
+
+  /**
+   * v1 → v2 静默升级（O33）：任一 PIN 校验成功后调用，改用 scrypt 加盐重新落盘。
+   * 失败保持 v1 摘要继续生效（下次校验成功再试），绝不影响本次校验结果。
+   */
+  private upgradeDigest(pin: string): void {
+    if (this.pinKdf === 'scrypt' || !safeStorage.isEncryptionAvailable()) return
+    try {
+      this.persistPin(pin)
+    } catch {
+      // 升级失败不阻塞：v1 校验串仍有效
+    }
   }
 
   /** 向渲染端广播锁定状态变化 */

@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { safeStorage } from 'electron'
 import type { AccountEntry, EntryDraft, LoadStatus, PasswordHistoryItem } from '../shared/types'
+import { SafeBoxError } from './errors'
 
 /**
  * 本地数据存储：无启动密码，应用启动即加载。
@@ -141,7 +142,7 @@ export class VaultStore {
    */
   update(id: string, draft: EntryDraft): AccountEntry {
     const index = this.entries.findIndex((e) => e.id === id)
-    if (index === -1) throw new Error('账号不存在')
+    if (index === -1) throw new SafeBoxError('ENTRY_NOT_FOUND', '账号不存在')
     const previous = this.entries[index]
     const normalized = normalizeDraft(draft)
     const now = Date.now()
@@ -170,7 +171,7 @@ export class VaultStore {
    */
   remove(id: string): void {
     const index = this.entries.findIndex((e) => e.id === id)
-    if (index === -1) throw new Error('账号不存在')
+    if (index === -1) throw new SafeBoxError('ENTRY_NOT_FOUND', '账号不存在')
     if (this.entries[index].deletedAt) return
     const next = [...this.entries]
     next[index] = { ...this.entries[index], deletedAt: Date.now() }
@@ -180,8 +181,8 @@ export class VaultStore {
   /** 从回收站恢复账号（清除软删除标记），返回恢复后的条目 */
   restore(id: string): AccountEntry {
     const index = this.entries.findIndex((e) => e.id === id)
-    if (index === -1) throw new Error('账号不存在')
-    if (!this.entries[index].deletedAt) throw new Error('该账号不在回收站中')
+    if (index === -1) throw new SafeBoxError('ENTRY_NOT_FOUND', '账号不存在')
+    if (!this.entries[index].deletedAt) throw new SafeBoxError('ENTRY_NOT_IN_TRASH', '该账号不在回收站中')
     const restored = { ...this.entries[index] }
     delete restored.deletedAt
     const next = [...this.entries]
@@ -222,8 +223,8 @@ export class VaultStore {
   /** 彻底删除回收站中的账号（物理删除，不可恢复）；不允许绕过软删除直接物理删除 */
   purge(id: string): void {
     const index = this.entries.findIndex((e) => e.id === id)
-    if (index === -1) throw new Error('账号不存在')
-    if (!this.entries[index].deletedAt) throw new Error('该账号不在回收站中')
+    if (index === -1) throw new SafeBoxError('ENTRY_NOT_FOUND', '账号不存在')
+    if (!this.entries[index].deletedAt) throw new SafeBoxError('ENTRY_NOT_IN_TRASH', '该账号不在回收站中')
     this.commit(this.entries.filter((e) => e.id !== id))
   }
 
@@ -242,7 +243,7 @@ export class VaultStore {
 
   toggleFavorite(id: string): AccountEntry {
     const index = this.entries.findIndex((e) => e.id === id)
-    if (index === -1) throw new Error('账号不存在')
+    if (index === -1) throw new SafeBoxError('ENTRY_NOT_FOUND', '账号不存在')
     const updated: AccountEntry = {
       ...this.entries[index],
       favorite: !this.entries[index].favorite,
@@ -265,7 +266,7 @@ export class VaultStore {
     let skipped = 0
     for (const entry of entries) {
       if (entry === null || typeof entry !== 'object') {
-        throw new Error('备份内容包含无效条目')
+        throw new SafeBoxError('BACKUP_INVALID_ENTRY', '备份内容包含无效条目')
       }
       if (typeof entry.id === 'string' && existing.has(entry.id)) {
         skipped++
@@ -478,18 +479,24 @@ function sanitizeHistory(raw: unknown): PasswordHistoryItem[] | undefined {
 /** 校验并规范化渲染进程提交的账号数据 */
 function normalizeDraft(draft: EntryDraft): Omit<AccountEntry, 'id' | 'favorite' | 'createdAt' | 'updatedAt'> {
   if (typeof draft !== 'object' || draft === null) {
-    throw new Error('数据格式错误')
+    throw new SafeBoxError('DRAFT_FORMAT', '数据格式错误')
   }
-  const str = (value: unknown, max: number, field: string): string => {
+  // field 传稳定键名（渲染端按 key 查本地化字段名，O31）；中文标签仅作主进程兜底文案
+  const FIELD_LABELS = { title: '名称', url: '网址', username: '用户名', notes: '备注' } as const
+  const str = (value: unknown, max: number, field: keyof typeof FIELD_LABELS): string => {
     if (value === undefined || value === null) return ''
-    if (typeof value !== 'string') throw new Error(`${field} 格式错误`)
+    if (typeof value !== 'string') {
+      throw new SafeBoxError('FIELD_INVALID', `${FIELD_LABELS[field]} 格式错误`, { field })
+    }
     const trimmed = value.trim()
-    if (trimmed.length > max) throw new Error(`${field}过长（最多 ${max} 字符）`)
+    if (trimmed.length > max) {
+      throw new SafeBoxError('FIELD_TOO_LONG', `${FIELD_LABELS[field]}过长（最多 ${max} 字符）`, { field, max })
+    }
     return trimmed
   }
 
-  const title = str(draft.title, 100, '名称')
-  if (!title) throw new Error('请填写账号名称')
+  const title = str(draft.title, 100, 'title')
+  if (!title) throw new SafeBoxError('TITLE_REQUIRED', '请填写账号名称')
 
   // TOTP 秘钥与参数一并解析（F18）；三参数键恒存在（值可 undefined），
   // 保证 update() 的 spread 覆盖能正确清除旧参数
@@ -498,10 +505,10 @@ function normalizeDraft(draft: EntryDraft): Omit<AccountEntry, 'id' | 'favorite'
     title,
     // 分类不在预置列表时归入 other
     category: CATEGORY_IDS.includes(draft.category) ? draft.category : 'other',
-    url: str(draft.url, 500, '网址'),
-    username: str(draft.username, 200, '用户名'),
+    url: str(draft.url, 500, 'url'),
+    username: str(draft.username, 200, 'username'),
     password: typeof draft.password === 'string' ? draft.password.slice(0, 500) : '',
-    notes: str(draft.notes, 2000, '备注'),
+    notes: str(draft.notes, 2000, 'notes'),
     totpSecret: totp?.secret,
     totpPeriod: totp?.period,
     totpDigits: totp?.digits,
@@ -524,10 +531,10 @@ interface StoredTotp {
  */
 function normalizeTotp(raw: unknown): StoredTotp | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined
-  if (typeof raw !== 'string') throw new Error('TOTP 秘钥格式错误')
+  if (typeof raw !== 'string') throw new SafeBoxError('TOTP_FORMAT', 'TOTP 秘钥格式错误')
   const trimmed = raw.trim()
   if (!trimmed) return undefined
-  if (trimmed.length > 500) throw new Error('TOTP 秘钥过长')
+  if (trimmed.length > 500) throw new SafeBoxError('TOTP_TOO_LONG', 'TOTP 秘钥过长')
 
   let secret: string
   let period: number | undefined
@@ -542,9 +549,9 @@ function normalizeTotp(raw: unknown): StoredTotp | undefined {
       if (url.protocol !== 'otpauth:' || url.host.toLowerCase() !== 'totp') throw new Error('bad type')
       rawSecret = url.searchParams.get('secret')
     } catch {
-      throw new Error('otpauth 链接格式错误（仅支持 totp 类型）')
+      throw new SafeBoxError('OTPAUTH_FORMAT', 'otpauth 链接格式错误（仅支持 totp 类型）')
     }
-    if (!rawSecret) throw new Error('otpauth 链接缺少 secret 参数')
+    if (!rawSecret) throw new SafeBoxError('OTPAUTH_NO_SECRET', 'otpauth 链接缺少 secret 参数')
     secret = assertBase32(rawSecret)
     period = parseStoredPeriod(url.searchParams.get('period'))
     digits = parseStoredDigits(url.searchParams.get('digits'))
@@ -564,7 +571,9 @@ function normalizeTotp(raw: unknown): StoredTotp | undefined {
 function parseStoredPeriod(raw: string | null): number | undefined {
   if (raw === null || raw === '') return undefined
   const value = Number(raw)
-  if (!Number.isInteger(value) || value < 1 || value > 3600) throw new Error('TOTP 周期须为 1-3600 的整数（秒）')
+  if (!Number.isInteger(value) || value < 1 || value > 3600) {
+    throw new SafeBoxError('TOTP_PERIOD_RANGE', 'TOTP 周期须为 1-3600 的整数（秒）')
+  }
   return value === 30 ? undefined : value
 }
 
@@ -572,7 +581,7 @@ function parseStoredPeriod(raw: string | null): number | undefined {
 function parseStoredDigits(raw: string | null): number | undefined {
   if (raw === null || raw === '') return undefined
   const value = Number(raw)
-  if (value !== 6 && value !== 8) throw new Error('TOTP 位数仅支持 6 或 8 位')
+  if (value !== 6 && value !== 8) throw new SafeBoxError('TOTP_DIGITS_RANGE', 'TOTP 位数仅支持 6 或 8 位')
   return value === 6 ? undefined : value
 }
 
@@ -581,7 +590,7 @@ function parseStoredAlgorithm(raw: string | null): StoredTotp['algorithm'] {
   if (raw === null || raw === '') return undefined
   const value = raw.toUpperCase().replace(/-/g, '')
   if (value !== 'SHA1' && value !== 'SHA256' && value !== 'SHA512') {
-    throw new Error('TOTP 算法仅支持 SHA1 / SHA256 / SHA512')
+    throw new SafeBoxError('TOTP_ALGORITHM_RANGE', 'TOTP 算法仅支持 SHA1 / SHA256 / SHA512')
   }
   return value === 'SHA1' ? undefined : value
 }
@@ -610,9 +619,11 @@ function sanitizeTotpParams(raw: {
 /** Base32 校验与规范化（存储侧） */
 function assertBase32(raw: string): string {
   const compact = raw.replace(/[\s-]/g, '').replace(/=+$/, '').toUpperCase()
-  if (compact.length < 8) throw new Error('TOTP 秘钥过短（至少 8 个 Base32 字符）')
-  if (compact.length > 128) throw new Error('TOTP 秘钥过长')
-  if (!/^[A-Z2-7]+$/.test(compact)) throw new Error('TOTP 秘钥不是有效的 Base32（仅允许 A-Z 和 2-7）')
+  if (compact.length < 8) throw new SafeBoxError('TOTP_TOO_SHORT', 'TOTP 秘钥过短（至少 8 个 Base32 字符）', { min: 8 })
+  if (compact.length > 128) throw new SafeBoxError('TOTP_TOO_LONG', 'TOTP 秘钥过长')
+  if (!/^[A-Z2-7]+$/.test(compact)) {
+    throw new SafeBoxError('TOTP_NOT_BASE32', 'TOTP 秘钥不是有效的 Base32（仅允许 A-Z 和 2-7）')
+  }
   return compact
 }
 

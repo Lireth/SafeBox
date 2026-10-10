@@ -47,6 +47,9 @@ const baseSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
   language: 'zh',
   openAtLogin: false,
   autoLockMinutes: 5,
+  lockOnMinimize: false,
+  skipUpdateVersion: '',
+  windowMaximized: false,
   ...overrides,
 })
 

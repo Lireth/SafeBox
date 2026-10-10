@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
-import { PasswordGenerator } from './PasswordGenerator'
+import { PasswordGenerator, type GeneratorMode } from './PasswordGenerator'
 import { CATEGORIES } from '../lib/categories'
-import { generatePassword, passwordStrength } from '../lib/password'
+import { DEFAULT_PASSPHRASE, generatePassphrase, generatePassword, passwordStrength } from '../lib/password'
 import { buildOtpauthUrl, parseTotpParams } from '../lib/totp'
 import { t, useLang } from '../lib/i18n'
+import { resolveIpcError } from '../lib/ipcError'
 import type { AccountEntry, EntryDraft } from '../../../../shared/types'
 
 interface EntryFormModalProps {
@@ -28,6 +29,9 @@ const EMPTY_FORM: EntryDraft = {
 
 const DEFAULT_GENERATOR = { length: 16, upper: true, lower: true, digits: true, symbols: true }
 
+/** 生成器模式（F20）：随机字符 / 口令短语；口令短语选项独立记忆 */
+const DEFAULT_PASS_GENERATOR = DEFAULT_PASSPHRASE
+
 export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps): React.JSX.Element {
   useLang()
   // 编辑时 TOTP 字段回填重建的原始输入：带自定义参数的条目还原为 otpauth 链接，
@@ -40,7 +44,9 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
   const [busy, setBusy] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [genOpen, setGenOpen] = useState(false)
+  const [genMode, setGenMode] = useState<GeneratorMode>('chars')
   const [genOptions, setGenOptions] = useState(DEFAULT_GENERATOR)
+  const [passOptions, setPassOptions] = useState(DEFAULT_PASS_GENERATOR)
   /** TOTP 秘钥即时校验错误（空串表示合法或未填写）；主进程 normalizeTotp 仍为最终防线 */
   const [totpError, setTotpError] = useState('')
   /** 名称字段是否失焦过：失焦后为空才显示必填提示（O22，避免初始新增即报错） */
@@ -61,7 +67,13 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
   }
 
   function handleGenerate(): void {
-    patch({ password: generatePassword(genOptions) })
+    patch({ password: genMode === 'chars' ? generatePassword(genOptions) : generatePassphrase(passOptions) })
+  }
+
+  /** 切换生成器模式（F20）：立即用新模式重新生成并写入表单 */
+  function handleGenModeChange(mode: GeneratorMode): void {
+    setGenMode(mode)
+    patch({ password: mode === 'chars' ? generatePassword(genOptions) : generatePassphrase(passOptions) })
   }
 
   /** TOTP 输入即时校验：空值合法（不启用），非法时展示 parseTotpParams 的本地化错误（含参数校验，F18） */
@@ -87,7 +99,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
     try {
       await onSubmit({ ...form, title: form.title.trim() })
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('form.saveFailed'))
+      setError(resolveIpcError(err, t('form.saveFailed')))
       setBusy(false)
     }
   }
@@ -196,10 +208,17 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
 
         {genOpen && (
           <PasswordGenerator
+            mode={genMode}
+            onModeChange={handleGenModeChange}
             options={genOptions}
             onChange={(next) => {
               setGenOptions(next)
               patch({ password: generatePassword(next) })
+            }}
+            passOptions={passOptions}
+            onPassChange={(next) => {
+              setPassOptions(next)
+              patch({ password: generatePassphrase(next) })
             }}
             onRegenerate={handleGenerate}
           />

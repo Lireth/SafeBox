@@ -12,6 +12,7 @@ import type {
   LockState,
   SafeBoxAPI,
   UnlockResult,
+  UpdateCheckResult,
 } from '../shared/types'
 
 // ============================================================
@@ -49,7 +50,8 @@ const INVOKE_CHANNELS = new Set([
   'backup:export-csv',
   'logs:export',
   'logs:renderer-error',
-  'update:install'
+  'update:install',
+  'update:check'
 ])
 
 /** invoke 封装：白名单校验 + 还原主进程抛出的真实错误信息 */
@@ -94,6 +96,7 @@ export const electronAPI: SafeBoxAPI = {
     return () => ipcRenderer.removeListener('update:available', wrapped)
   },
   installUpdate: () => invoke('update:install'),
+  checkForUpdate: () => invoke<UpdateCheckResult>('update:check'),
   addEntry: (draft) => invoke<AccountEntry>('entries:add', draft),
   updateEntry: (id, draft) => invoke<AccountEntry>('entries:update', id, draft),
   deleteEntry: (id) => invoke('entries:delete', id),

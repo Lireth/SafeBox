@@ -9,6 +9,7 @@ import { TOTP_DIGITS, TOTP_PERIOD_SECONDS } from '../lib/totp'
 import { formatDateTime, maskPassword } from '../lib/format'
 import { useAutoHide } from '../lib/useAutoHide'
 import { t, useLang } from '../lib/i18n'
+import { resolveIpcError } from '../lib/ipcError'
 import type { AccountEntry } from '../../../../shared/types'
 
 interface EntryDetailModalProps {
@@ -129,8 +130,8 @@ export function EntryDetailModal({
               title={t('detail.openInBrowser')}
               onClick={() =>
                 void window.safebox.openExternal(entry.url).catch((err: unknown) => {
-                  // 打开失败必须有反馈（O22）：优先展示主进程错误（如非 http/https），否则本地化兜底
-                  onError(err instanceof Error ? err.message : t('detail.openLinkFailed'))
+                  // 打开失败必须有反馈（O22）：错误码信封按当前语言渲染，否则本地化兜底
+                  onError(resolveIpcError(err, t('detail.openLinkFailed')))
                 })
               }
             >

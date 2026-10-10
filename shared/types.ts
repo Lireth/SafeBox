@@ -101,6 +101,14 @@ export interface AppSettings {
    * 系统锁屏（lock-screen 事件）的即时锁定不受此值影响——那是明确的离开信号。
    */
   autoLockMinutes: number
+  /** 最小化窗口时立即进入锁定态（F26）；false（默认） */
+  lockOnMinimize: boolean
+  /** 用户选择跳过的更新版本号（F25）；空串表示未跳过任何版本 */
+  skipUpdateVersion: string
+  /** 窗口位置尺寸记忆（F27）；缺省表示尚未记录，恢复时用默认尺寸 */
+  windowBounds?: WindowBounds
+  /** 窗口是否处于最大化状态（F27，与 windowBounds 配套） */
+  windowMaximized: boolean
 }
 
 /** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */
@@ -150,6 +158,74 @@ export interface DiagnosticsExportResult {
   canceled: boolean
   /** 保存路径（取消时缺省） */
   path?: string
+}
+
+/**
+ * 主进程业务错误码（O31）：主进程 SafeBoxError 在 IPC 边界序列化为 JSON 信封，
+ * 渲染端 resolveIpcError 按 code 查 locale 表渲染当前语言文案（未知错误原样透传）。
+ */
+export type SafeBoxErrorCode =
+  // 通用
+  | 'LOCKED'
+  | 'FIELD_FORMAT'
+  | 'URL_FORMAT'
+  | 'URL_PROTOCOL'
+  | 'DATA_DIR_FAIL'
+  // 账号数据（vault）
+  | 'ENTRY_NOT_FOUND'
+  | 'ENTRY_NOT_IN_TRASH'
+  | 'BACKUP_INVALID_ENTRY'
+  | 'DRAFT_FORMAT'
+  | 'FIELD_INVALID'
+  | 'FIELD_TOO_LONG'
+  | 'TITLE_REQUIRED'
+  // TOTP 校验
+  | 'TOTP_FORMAT'
+  | 'TOTP_TOO_LONG'
+  | 'OTPAUTH_FORMAT'
+  | 'OTPAUTH_NO_SECRET'
+  | 'TOTP_PERIOD_RANGE'
+  | 'TOTP_DIGITS_RANGE'
+  | 'TOTP_ALGORITHM_RANGE'
+  | 'TOTP_TOO_SHORT'
+  | 'TOTP_NOT_BASE32'
+  // 锁定 PIN
+  | 'PIN_WRONG_CURRENT'
+  | 'PIN_LENGTH'
+  | 'ENCRYPTION_UNAVAILABLE'
+  | 'NO_PIN_SET'
+  | 'PIN_WRONG'
+  | 'PIN_RATE_LIMITED'
+  | 'PIN_REQUIRED'
+  // 加密备份
+  | 'PASSWORD_TOO_SHORT'
+  | 'BACKUP_FORMAT'
+  | 'BACKUP_NOT_VALID'
+  | 'BACKUP_VERSION_NEW'
+  | 'BACKUP_CONTENT_INVALID'
+  | 'BACKUP_DECRYPT_FAIL'
+
+/** 跨 IPC 错误信封（preload 侧仍为 Error.message 字符串，渲染端解析） */
+export interface SafeBoxErrorPayload {
+  code: SafeBoxErrorCode
+  params?: Record<string, string | number>
+}
+
+/** 窗口位置尺寸（F27：持久化于 settings.json，非敏感；恢复时按屏幕工作区夹紧） */
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** 手动检查更新结果（F25）：available 时下载继续在后台进行，就绪后经既有横幅通知 */
+export interface UpdateCheckResult {
+  status: 'no-update' | 'available' | 'error'
+  /** 发现的新版本号（status=available） */
+  version?: string
+  /** 失败原因（status=error） */
+  message?: string
 }
 
 export interface SafeBoxAPI {
@@ -208,6 +284,8 @@ export interface SafeBoxAPI {
   openDataDir(): Promise<void>
   /** 导出诊断日志（弹出系统保存对话框；日志经脱敏，锁定态也可导出）（issue #35） */
   exportDiagnostics(): Promise<DiagnosticsExportResult>
+  /** 手动检查更新（F25）：同步返回检查结论，发现新版本时后台继续下载，就绪后经横幅通知 */
+  checkForUpdate(): Promise<UpdateCheckResult>
   /**
    * 上报渲染端未捕获异常（O32）：由渲染端入口的 error/unhandledrejection 监听调用，
    * 主进程经 logger 统一脱敏后进入诊断日志。消息与堆栈在渲染端已截断。

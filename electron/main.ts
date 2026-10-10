@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, screen, shell } from 'electron'
 import path from 'node:path'
 import { clearTrackedClipboard, registerIpcHandlers, applyLoginItem } from './ipc'
 import { initLogger } from './logger'
@@ -8,6 +8,7 @@ import { initAutoUpdater } from './updater'
 import { destroyTray, initTray, registerGlobalLockShortcut, unregisterGlobalShortcuts } from './tray'
 import { TRASH_RETENTION_MS, VaultStore } from './vault'
 import { normalizeHttpUrl } from './url'
+import type { WindowBounds } from '../shared/types'
 
 // 「正在退出」标记：before-quit 置 true，使窗口 close 拦截不再把窗口藏回托盘
 // （否则托盘「退出」/ app.quit 会被 preventDefault 卡住）
@@ -31,10 +32,37 @@ let mainWindow: BrowserWindow | null = null
 /** 托盘是否可用（图标加载失败时禁止「关闭最小化到托盘」，避免窗口无处可去） */
 let trayReady = false
 
+/**
+ * 恢复上次的窗口位置尺寸（F27）：按目标屏幕工作区夹紧，
+ * 防止显示器拓扑变化（拔掉外接屏 / 改分辨率）后窗口跑出可视区。
+ */
+function restoreBounds(): Partial<WindowBounds> {
+  const saved = settings.settings.windowBounds
+  if (!saved) return {}
+  const workArea = screen.getDisplayMatching(saved).workArea
+  const width = Math.min(saved.width, workArea.width)
+  const height = Math.min(saved.height, workArea.height)
+  const x = Math.min(Math.max(saved.x, workArea.x), workArea.x + workArea.width - width)
+  const y = Math.min(Math.max(saved.y, workArea.y), workArea.y + workArea.height - height)
+  return { x, y, width, height }
+}
+
+/** 持久化当前窗口位置尺寸（F27）：getNormalBounds 保存非最大化几何，最大化状态单独记 */
+function persistWindowBounds(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  try {
+    settings.update({ windowBounds: mainWindow.getNormalBounds(), windowMaximized: mainWindow.isMaximized() })
+  } catch {
+    // 记忆失败不阻塞关闭流程
+  }
+}
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
+    // 默认尺寸在前，已记忆的几何（F27）覆盖之；无记忆时走默认
     width: 1200,
     height: 800,
+    ...restoreBounds(),
     minWidth: 860,
     minHeight: 600,
     show: false,
@@ -49,6 +77,17 @@ function createMainWindow(): BrowserWindow {
   })
 
   win.on('ready-to-show', () => win.show())
+
+  // 上次退出时为最大化则恢复最大化（F27）
+  if (settings.settings.windowMaximized) win.maximize()
+
+  // 最小化即锁（F26）：含最小化到托盘的前置动作；未设 PIN 时 lock 内部为 no-op
+  win.on('minimize', () => {
+    if (settings.settings.lockOnMinimize) lock.lock(store)
+  })
+
+  // 关闭时记忆窗口几何：真实关闭与「关闭最小化到托盘」的隐藏路径都会先触发 close
+  win.on('close', () => persistWindowBounds())
 
   // 开启「关闭最小化到托盘」时：点 × 只隐藏窗口，进程与托盘常驻
   win.on('close', (e) => {

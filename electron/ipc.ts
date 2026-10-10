@@ -2,11 +2,12 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
 import { buildCsv, mapCsvEntries, parseCsvRows } from './csv'
+import { SafeBoxError, toIpcError } from './errors'
 import { exportDiagnostics } from './logger'
 import type { AppSettings, EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import type { SettingsStore } from './settings'
-import { installUpdate } from './updater'
+import { checkForUpdate, installUpdate } from './updater'
 import { VaultStore } from './vault'
 import { normalizeHttpUrl } from './url'
 
@@ -44,25 +45,39 @@ export function applyLoginItem(openAtLogin: boolean): void {
 export function registerIpcHandlers(store: VaultStore, lock: LockManager, settings: SettingsStore): void {
   /** 锁定守卫：锁定态下抛错，防止敏感数据 / 敏感操作离开主进程 */
   const guard = <T>(handler: () => T): T => {
-    if (lock.isLocked) throw new Error('应用已锁定，请先解锁')
+    if (lock.isLocked) throw new SafeBoxError('LOCKED', '应用已锁定，请先解锁')
     return handler()
+  }
+
+  /**
+   * IPC 注册包装（O31）：SafeBoxError 在此序列化为 JSON 信封（渲染端按 code 渲染本地化文案），
+   * 其余错误（意外 bug）原样透传。所有 handler 统一经此注册。
+   */
+  const handleIpc = (channel: string, fn: (...args: unknown[]) => unknown): void => {
+    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+      try {
+        return await fn(event, ...args)
+      } catch (err) {
+        throw toIpcError(err)
+      }
+    })
   }
 
   // ---- 应用状态 ----
 
-  ipcMain.handle('app:load-status', () => store.getLoadStatus())
+  handleIpc('app:load-status', () => store.getLoadStatus())
 
-  ipcMain.handle('app:open-data-dir', async () => {
+  handleIpc('app:open-data-dir', async () => {
     // 返回空字符串表示成功，否则为平台错误信息
     const error = await shell.openPath(app.getPath('userData'))
-    if (error) throw new Error(`无法打开数据目录: ${error}`)
+    if (error) throw new SafeBoxError('DATA_DIR_FAIL', `无法打开数据目录: ${error}`, { detail: error })
   })
 
   // ---- 应用设置（非敏感偏好，锁定态也可读写） ----
 
-  ipcMain.handle('settings:get', () => settings.settings)
+  handleIpc('settings:get', () => settings.settings)
 
-  ipcMain.handle('settings:update', (_event, patch: unknown) => {
+  handleIpc('settings:update', (_event, patch: unknown) => {
     const p = (patch && typeof patch === 'object' ? patch : {}) as Partial<AppSettings>
     const next = settings.update(p)
     // 开机自启即时生效（issue #34）：仅当本次更新涉及该字段
@@ -71,11 +86,11 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
   })
 
   // 系统区域设置（如 zh-CN / en-US），供渲染端「跟随系统」语言检测（issue #33）
-  ipcMain.handle('app:get-locale', () => app.getLocale())
+  handleIpc('app:get-locale', () => app.getLocale())
 
   // ---- 诊断日志导出（issue #35，非敏感数据：logger 已脱敏，锁定态也可导出） ----
 
-  ipcMain.handle('logs:export', async () => {
+  handleIpc('logs:export', async () => {
     const win = BrowserWindow.getAllWindows()[0] ?? null
     const result = await dialog.showSaveDialog(win, {
       title: '导出诊断日志',
@@ -89,22 +104,22 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   // ---- 应用锁定 ----
 
-  ipcMain.handle('lock:get-state', () => ({ pinEnabled: lock.pinEnabled, locked: lock.isLocked }))
+  handleIpc('lock:get-state', () => ({ pinEnabled: lock.pinEnabled, locked: lock.isLocked }))
 
   // O28：锁定态下 setup / clear 同样被 guard 拒绝——二者的 oldPin 校验不走解锁退避，
   // 若放行将构成绕过 MAX_UNLOCK_ATTEMPTS 的爆破旁路（成功一次即可自行改 PIN 解锁）。
   // 正常 UI 在锁定态也不会触达这两个入口；lock / unlock / get-state 是解锁路径，必须放行。
-  ipcMain.handle('lock:setup', (_event, oldPin: unknown, newPin: unknown) =>
+  handleIpc('lock:setup', (_event, oldPin: unknown, newPin: unknown) =>
     guard(() => lock.setupPin(oldPin, newPin)),
   )
 
-  ipcMain.handle('lock:clear', (_event, oldPin: unknown) => guard(() => lock.clearPin(oldPin, store)))
+  handleIpc('lock:clear', (_event, oldPin: unknown) => guard(() => lock.clearPin(oldPin, store)))
 
-  ipcMain.handle('lock:lock', () => {
+  handleIpc('lock:lock', () => {
     lock.lock(store)
   })
 
-  ipcMain.handle('lock:unlock', (_event, pin: unknown) => {
+  handleIpc('lock:unlock', (_event, pin: unknown) => {
     // 结构化结果（O18）：失败不抛错，渲染端按错误码渲染本地化文案
     return lock.unlock(pin, store)
   })
@@ -116,7 +131,7 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   const BACKUP_FILE_FILTER = [{ name: 'SafeBox 加密备份', extensions: ['json'] }]
 
-  ipcMain.handle('backup:export', (_event, password: unknown) =>
+  handleIpc('backup:export', (_event, password: unknown) =>
     guard(async () => {
       const win = mainWindow()
       const result = await dialog.showSaveDialog(win, {
@@ -125,12 +140,12 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
         filters: BACKUP_FILE_FILTER,
       })
       if (result.canceled || !result.filePath) return { canceled: true }
-      const count = exportEncryptedBackup(store, result.filePath, assertString(password, '口令'))
+      const count = exportEncryptedBackup(store, result.filePath, assertString(password, 'passphrase'))
       return { canceled: false, path: result.filePath, count }
     }),
   )
 
-  ipcMain.handle('backup:import', (_event, password: unknown) =>
+  handleIpc('backup:import', (_event, password: unknown) =>
     guard(async () => {
       const win = mainWindow()
       const result = await dialog.showOpenDialog(win, {
@@ -139,14 +154,14 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
         properties: ['openFile']
       })
       if (result.canceled || result.filePaths.length === 0) return { canceled: true }
-      const stats = importEncryptedBackup(store, result.filePaths[0], assertString(password, '口令'))
+      const stats = importEncryptedBackup(store, result.filePaths[0], assertString(password, 'passphrase'))
       return { canceled: false, ...stats }
     })
   )
 
   // ---- CSV 导入（第三方密码管理器迁移；锁定期间拒绝） ----
 
-  ipcMain.handle('backup:import-csv', () =>
+  handleIpc('backup:import-csv', () =>
     guard(async () => {
       const win = mainWindow()
       const result = await dialog.showOpenDialog(win, {
@@ -165,11 +180,11 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   // ---- 明文 CSV 导出（数据可携带性；锁定期间拒绝，启用 PIN 时强制身份校验） ----
 
-  ipcMain.handle('backup:export-csv', (_event, pin: unknown) =>
+  handleIpc('backup:export-csv', (_event, pin: unknown) =>
     guard(async () => {
       // 二次身份确认：已启用锁定时必须携带正确 PIN（渲染端强确认弹窗后传入）
       if (lock.pinEnabled) {
-        if (typeof pin !== 'string' || !pin) throw new Error('请输入锁定 PIN 以确认导出')
+        if (typeof pin !== 'string' || !pin) throw new SafeBoxError('PIN_REQUIRED', '请输入锁定 PIN 以确认导出')
         lock.verifyPin(pin)
       }
       const win = mainWindow()
@@ -190,37 +205,40 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   // ---- 自动更新 ----
 
-  ipcMain.handle('update:install', () => {
+  handleIpc('update:install', () => {
     installUpdate()
   })
 
+  // 手动检查更新（F25）：同步返回检查结论（发现新版本时后台继续下载，就绪后经既有横幅通知）
+  handleIpc('update:check', () => checkForUpdate())
+
   // ---- 账号 CRUD（锁定期间拒绝访问数据） ----
 
-  ipcMain.handle('entries:list', () => guard(() => store.list()))
+  handleIpc('entries:list', () => guard(() => store.list()))
 
-  ipcMain.handle('entries:add', (_event, draft: unknown) => guard(() => store.add(draft as EntryDraft)))
+  handleIpc('entries:add', (_event, draft: unknown) => guard(() => store.add(draft as EntryDraft)))
 
-  ipcMain.handle('entries:update', (_event, id: unknown, draft: unknown) =>
+  handleIpc('entries:update', (_event, id: unknown, draft: unknown) =>
     guard(() => store.update(assertString(id, 'id'), draft as EntryDraft)),
   )
 
-  ipcMain.handle('entries:delete', (_event, id: unknown) => {
+  handleIpc('entries:delete', (_event, id: unknown) => {
     guard(() => store.remove(assertString(id, 'id')))
   })
 
-  ipcMain.handle('entries:restore', (_event, id: unknown) => guard(() => store.restore(assertString(id, 'id'))))
+  handleIpc('entries:restore', (_event, id: unknown) => guard(() => store.restore(assertString(id, 'id'))))
 
   // 恢复回收站全部账号（F19）：返回恢复数量
-  ipcMain.handle('entries:restore-all', () => guard(() => store.restoreAll()))
+  handleIpc('entries:restore-all', () => guard(() => store.restoreAll()))
 
-  ipcMain.handle('entries:purge', (_event, id: unknown) => {
+  handleIpc('entries:purge', (_event, id: unknown) => {
     guard(() => store.purge(assertString(id, 'id')))
   })
 
   // 清空回收站（F19）：物理删除全部回收站条目，返回删除数量
-  ipcMain.handle('entries:purge-all', () => guard(() => store.purgeAll()))
+  handleIpc('entries:purge-all', () => guard(() => store.purgeAll()))
 
-  ipcMain.handle('entries:toggle-favorite', (_event, id: unknown) =>
+  handleIpc('entries:toggle-favorite', (_event, id: unknown) =>
     guard(() => store.toggleFavorite(assertString(id, 'id'))),
   )
 
@@ -228,9 +246,9 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   let clipboardTimer: NodeJS.Timeout | null = null
 
-  ipcMain.handle('clipboard:copy', (_event, text: unknown) => {
-    const value = assertString(text, '内容')
-    if (lock.isLocked) throw new Error('应用已锁定，请先解锁')
+  handleIpc('clipboard:copy', (_event, text: unknown) => {
+    const value = assertString(text, 'content')
+    if (lock.isLocked) throw new SafeBoxError('LOCKED', '应用已锁定，请先解锁')
     if (!value) return
     clipboard.writeText(value)
     // O30 说明：曾尝试追加 Windows「ExcludeClipboardContentFromMonitorProcessing」自定义格式
@@ -251,7 +269,7 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
   lock.onLock(clearTrackedClipboard)
 
   // O27：与窗口 openHandler 共用同一 http/https 白名单（normalizeHttpUrl）
-  ipcMain.handle('app:open-external', (_event, url: unknown) => {
+  handleIpc('app:open-external', (_event, url: unknown) => {
     const normalized = normalizeHttpUrl(url)
     if (!normalized) return
     void shell.openExternal(normalized)
@@ -262,14 +280,19 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
   // 经 console.error 进入诊断日志的缓冲与落盘，由 logger 统一脱敏。
   // 注意：监听必须位于渲染端主世界——脚本引擎级事件（error/unhandledrejection）
   // 按隔离世界派发，沙箱 preload（隔离世界）收不到主世界的未捕获异常（冒烟实证）。
-  ipcMain.handle('logs:renderer-error', (_event, message: unknown, stack: unknown) => {
+  handleIpc('logs:renderer-error', (_event, message: unknown, stack: unknown) => {
     const msg = typeof message === 'string' && message ? message : '未知渲染端异常'
     const detail = typeof stack === 'string' && stack ? `\n${stack}` : ''
     console.error(`[renderer] ${msg}${detail}`)
   })
 }
 
-function assertString(value: unknown, field: string): string {
-  if (typeof value !== 'string') throw new Error(`${field}格式错误`)
+/** IPC 入参字段（field 传稳定键名，渲染端按 key 查本地化字段名，O31） */
+const IPC_FIELD_LABELS = { content: '内容', url: '网址', id: 'ID', passphrase: '口令' } as const
+
+function assertString(value: unknown, field: keyof typeof IPC_FIELD_LABELS): string {
+  if (typeof value !== 'string') {
+    throw new SafeBoxError('FIELD_FORMAT', `${IPC_FIELD_LABELS[field]}格式错误`, { field })
+  }
   return value
 }

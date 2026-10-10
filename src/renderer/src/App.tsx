@@ -15,6 +15,7 @@ import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import { filterForDigit } from './lib/hotkeys'
 import { resolveLang, setLang, t, useLang } from './lib/i18n'
+import { resolveIpcError } from './lib/ipcError'
 import type { AccountEntry, BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
@@ -30,9 +31,9 @@ interface ToastState {
 /** 数据文件异常来源（渲染期按当前语言生成文案，语言切换即时更新） */
 type LoadWarning = { kind: 'broken'; file: string } | { kind: 'repaired'; skipped: number }
 
-/** 错误消息提取：IPC 报错还原主进程真实信息 */
+/** 错误消息提取（O31）：错误码信封按当前语言渲染，未知错误原样透传 */
 function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error ? err.message : fallback
+  return resolveIpcError(err, fallback)
 }
 
 export default function App(): React.JSX.Element {
@@ -52,6 +53,8 @@ export default function App(): React.JSX.Element {
   /** 非 null 表示新版本已下载就绪（值为版本号） */
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false)
+  /** 用户跳过的更新版本（F25）：横幅不再为该版本重现 */
+  const [skipVersion, setSkipVersion] = useState('')
   /** 键盘导航在列表中的当前位置（-1 表示未选中） */
   const [activeIndex, setActiveIndex] = useState(-1)
   const [filter, setFilter] = useState<FilterId>('all')
@@ -72,6 +75,7 @@ export default function App(): React.JSX.Element {
       try {
         const [settings, locale] = await Promise.all([window.safebox.getSettings(), window.safebox.getLocale()])
         setLang(resolveLang(settings.language, locale))
+        setSkipVersion(settings.skipUpdateVersion)
       } catch {
         // 读取失败保持默认 zh
       }
@@ -489,7 +493,7 @@ export default function App(): React.JSX.Element {
       />
 
       <main className="main">
-        {updateVersion && !updateBannerDismissed && !locked && (
+        {updateVersion && updateVersion !== skipVersion && !updateBannerDismissed && !locked && (
           <div className="update-banner" role="status">
             <Icon name="download" size={15} className="update-banner-icon" />
             <span className="update-banner-text">{t('update.ready', { version: updateVersion })}</span>
@@ -499,6 +503,17 @@ export default function App(): React.JSX.Element {
               onClick={() => void window.safebox.installUpdate()}
             >
               {t('update.installNow')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost update-banner-action"
+              onClick={() => {
+                setSkipVersion(updateVersion)
+                // 落盘失败仅影响下次启动后的提示重现，不阻塞本次隐藏
+                void window.safebox.updateSettings({ skipUpdateVersion: updateVersion }).catch(() => {})
+              }}
+            >
+              {t('update.skipVersion')}
             </button>
             <button type="button" className="icon-btn" aria-label={t('update.dismiss')} onClick={() => setUpdateBannerDismissed(true)}>
               <Icon name="x" size={14} />

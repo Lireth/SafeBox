@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { resolveLang, setLang, t, useLang } from '../lib/i18n'
-import type { AppSettings } from '../../../../shared/types'
+import { resolveIpcError } from '../lib/ipcError'
+import type { AppSettings, UpdateCheckResult } from '../../../../shared/types'
 
 interface SettingsModalProps {
   onClose: () => void
@@ -15,6 +16,9 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
   const [busy, setBusy] = useState(false)
   /** 诊断日志导出成功提示（显示落盘路径） */
   const [diagNotice, setDiagNotice] = useState('')
+  /** 手动检查更新状态（F25）：idle 未检查 / checking 进行中 / 其余为检查结论 */
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -44,7 +48,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
         setLang(resolveLang(next.language, locale))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('settings.saveFailed'))
+      setError(resolveIpcError(err, t('settings.saveFailed')))
     } finally {
       setBusy(false)
     }
@@ -60,9 +64,23 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
       const result = await window.safebox.exportDiagnostics()
       if (!result.canceled && result.path) setDiagNotice(t('settings.diagnosticsExported', { path: result.path }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('settings.saveFailed'))
+      setError(resolveIpcError(err, t('settings.saveFailed')))
     } finally {
       setBusy(false)
+    }
+  }
+
+  /** 手动检查更新（F25）：结论就地展示，发现新版本时后台继续下载（就绪后经全局横幅） */
+  async function checkUpdate(): Promise<void> {
+    if (busy || checking) return
+    setChecking(true)
+    setCheckResult(null)
+    try {
+      setCheckResult(await window.safebox.checkForUpdate())
+    } catch {
+      setCheckResult({ status: 'error' })
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -130,6 +148,36 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
             <option value={0}>{t('settings.autoLockNever')}</option>
           </select>
           <p className="gen-hint">{t('settings.autoLockHint')}</p>
+
+          <label className="checkbox settings-row">
+            <input
+              type="checkbox"
+              checked={settings.lockOnMinimize}
+              disabled={busy}
+              onChange={(e) => void persist({ lockOnMinimize: e.target.checked })}
+            />
+            <span>{t('settings.lockOnMinimize')}</span>
+          </label>
+          <p className="gen-hint">{t('settings.lockOnMinimizeHint')}</p>
+
+          <p className="field-label">{t('settings.updateSection')}</p>
+          <button
+            id="settings-check-update"
+            type="button"
+            className="btn btn-ghost"
+            disabled={busy || checking}
+            onClick={() => void checkUpdate()}
+          >
+            {t('settings.checkUpdate')}
+          </button>
+          {checking && <p className="gen-hint">{t('settings.checking')}</p>}
+          {!checking && checkResult?.status === 'no-update' && <p className="gen-hint">{t('settings.upToDate')}</p>}
+          {!checking && checkResult?.status === 'available' && (
+            <p className="gen-hint">{t('settings.updateFound', { version: checkResult.version ?? '' })}</p>
+          )}
+          {!checking && checkResult?.status === 'error' && (
+            <p className="form-error">{t('settings.checkFailed', { message: checkResult.message ?? '' })}</p>
+          )}
 
           <p className="field-label">
             {t('settings.diagnosticsLabel')}

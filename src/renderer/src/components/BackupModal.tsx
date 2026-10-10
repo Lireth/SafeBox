@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { t, useLang } from '../lib/i18n'
+import { resolveIpcError } from '../lib/ipcError'
 import type { BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult } from '../../../../shared/types'
 
 interface BackupModalProps {
@@ -56,7 +57,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
         setExportPwd2('')
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : t('backup.exportFailed'))
+      return fail(resolveIpcError(err, t('backup.exportFailed')))
     } finally {
       setBusy(false)
     }
@@ -76,7 +77,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
         setImportPwd('')
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : t('backup.importFailed'))
+      return fail(resolveIpcError(err, t('backup.importFailed')))
     } finally {
       setBusy(false)
     }
@@ -95,7 +96,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
         setNotice(t('backup.csvImportDone', { parts: parts.join('，'), total: result.total }))
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : t('backup.csvImportFailed'))
+      return fail(resolveIpcError(err, t('backup.csvImportFailed')))
     } finally {
       setBusy(false)
     }
@@ -115,7 +116,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
         setCsvPin('')
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : t('backup.csvExportFailed'))
+      return fail(resolveIpcError(err, t('backup.csvExportFailed')))
     } finally {
       setBusy(false)
     }

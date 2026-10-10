@@ -18,7 +18,15 @@ describe('SettingsStore', () => {
   it('无文件时返回默认值', () => {
     const store = new SettingsStore(tmpDir)
     expect(store.load()).toEqual(DEFAULT_SETTINGS)
-    expect(store.settings).toEqual({ minimizeToTray: false, language: 'auto', openAtLogin: false, autoLockMinutes: 5 })
+    expect(store.settings).toEqual({
+      minimizeToTray: false,
+      language: 'auto',
+      openAtLogin: false,
+      autoLockMinutes: 5,
+      lockOnMinimize: false,
+      skipUpdateVersion: '',
+      windowMaximized: false,
+    })
   })
 
   it('update 落盘后重新加载可读取', () => {
@@ -28,16 +36,40 @@ describe('SettingsStore', () => {
     expect(fs.existsSync(path.join(tmpDir, 'settings.json'))).toBe(true)
 
     const rebooted = new SettingsStore(tmpDir)
-    expect(rebooted.load()).toEqual({ minimizeToTray: true, language: 'auto', openAtLogin: false, autoLockMinutes: 5 })
+    expect(rebooted.load()).toEqual({
+      minimizeToTray: true,
+      language: 'auto',
+      openAtLogin: false,
+      autoLockMinutes: 5,
+      lockOnMinimize: false,
+      skipUpdateVersion: '',
+      windowMaximized: false,
+    })
   })
 
   it('update 仅写入合法字段并返回完整设置', () => {
     const store = new SettingsStore(tmpDir)
     store.load()
     const next = store.update({ minimizeToTray: true, unknownField: 'x' } as never)
-    expect(next).toEqual({ minimizeToTray: true, language: 'auto', openAtLogin: false, autoLockMinutes: 5 })
+    expect(next).toEqual({
+      minimizeToTray: true,
+      language: 'auto',
+      openAtLogin: false,
+      autoLockMinutes: 5,
+      lockOnMinimize: false,
+      skipUpdateVersion: '',
+      windowMaximized: false,
+    })
     const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf-8'))
-    expect(raw).toEqual({ minimizeToTray: true, language: 'auto', openAtLogin: false, autoLockMinutes: 5 })
+    expect(raw).toEqual({
+      minimizeToTray: true,
+      language: 'auto',
+      openAtLogin: false,
+      autoLockMinutes: 5,
+      lockOnMinimize: false,
+      skipUpdateVersion: '',
+      windowMaximized: false,
+    })
   })
 
   it('language 合法值持久化并可回读（issue #33）', () => {

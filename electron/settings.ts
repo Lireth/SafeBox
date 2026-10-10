@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AppSettings } from '../shared/types'
+import type { AppSettings, WindowBounds } from '../shared/types'
 
 /**
  * 应用设置持久化（userData/settings.json）
@@ -15,6 +15,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   language: 'auto',
   openAtLogin: false,
   autoLockMinutes: 5,
+  lockOnMinimize: false,
+  skipUpdateVersion: '',
+  windowMaximized: false,
 }
 
 /** autoLockMinutes 合法范围：0（永不空闲锁定）或 1-1440 分钟 */
@@ -24,6 +27,16 @@ const AUTO_LOCK_MAX = 24 * 60
 /** autoLockMinutes 校验：0-1440 的整数（O20） */
 function isValidAutoLockMinutes(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= AUTO_LOCK_MIN && v <= AUTO_LOCK_MAX
+}
+
+/** windowBounds 净化（F27）：四个字段均为有限数字且宽高为正才采纳，其余整体丢弃 */
+function sanitizeWindowBounds(v: unknown): WindowBounds | undefined {
+  if (typeof v !== 'object' || v === null) return undefined
+  const b = v as Record<string, unknown>
+  const isFiniteNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x)
+  if (!isFiniteNum(b.x) || !isFiniteNum(b.y) || !isFiniteNum(b.width) || !isFiniteNum(b.height)) return undefined
+  if (b.width <= 0 || b.height <= 0) return undefined
+  return { x: b.x, y: b.y, width: b.width, height: b.height }
 }
 
 export class SettingsStore {
@@ -59,6 +72,17 @@ export class SettingsStore {
         if (isValidAutoLockMinutes(obj.autoLockMinutes)) {
           this.current.autoLockMinutes = obj.autoLockMinutes
         }
+        if (typeof obj.lockOnMinimize === 'boolean') {
+          this.current.lockOnMinimize = obj.lockOnMinimize
+        }
+        if (typeof obj.skipUpdateVersion === 'string') {
+          this.current.skipUpdateVersion = obj.skipUpdateVersion
+        }
+        const bounds = sanitizeWindowBounds(obj.windowBounds)
+        if (bounds) this.current.windowBounds = bounds
+        if (typeof obj.windowMaximized === 'boolean') {
+          this.current.windowMaximized = obj.windowMaximized
+        }
       }
     } catch {
       // 损坏的设置文件：静默回落默认值，不弹窗不打日志（非关键数据）
@@ -73,6 +97,14 @@ export class SettingsStore {
     if (patch.language === 'auto' || patch.language === 'zh' || patch.language === 'en') next.language = patch.language
     if (typeof patch.openAtLogin === 'boolean') next.openAtLogin = patch.openAtLogin
     if (isValidAutoLockMinutes(patch.autoLockMinutes)) next.autoLockMinutes = patch.autoLockMinutes
+    if (typeof patch.lockOnMinimize === 'boolean') next.lockOnMinimize = patch.lockOnMinimize
+    if (typeof patch.skipUpdateVersion === 'string') next.skipUpdateVersion = patch.skipUpdateVersion
+    // patch 语义为「只更新出现的字段」：未提供 windowBounds 时保留既有记忆；非法结构整体丢弃
+    if (patch.windowBounds !== undefined) {
+      const bounds = sanitizeWindowBounds(patch.windowBounds)
+      if (bounds) next.windowBounds = bounds
+    }
+    if (typeof patch.windowMaximized === 'boolean') next.windowMaximized = patch.windowMaximized
     this.current = next
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8')
