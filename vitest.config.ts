@@ -10,6 +10,18 @@ import { defineConfig } from 'vitest/config'
 // ============================================================
 export default defineConfig({
   test: {
+    // 覆盖率门槛（issue #30）：仅统计「可单测的核心逻辑」——
+    // 主进程数据/安全模块（electron/，排除需真实 Electron 运行时、由打包冒烟覆盖的
+    // 装配层 main/preload/ipc/tray）+ 渲染端纯逻辑 lib（组件由 dom project 覆盖，不计入此处）。
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      reportsDirectory: 'coverage',
+      include: ['electron/**/*.ts', 'src/renderer/src/lib/**/*.ts'],
+      exclude: ['electron/main.ts', 'electron/preload.ts', 'electron/ipc.ts', 'electron/tray.ts'],
+      // 全局阈值：核心逻辑基线（当前实测 ~95%），回落到 90% 以下视为回归
+      thresholds: { statements: 90, branches: 85, functions: 90, lines: 90 },
+    },
     projects: [
       {
         extends: true,

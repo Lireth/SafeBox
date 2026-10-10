@@ -25,5 +25,46 @@ jobs:
       - name: 代码规范
         run: npm run lint
 
-      - name: 单元测试
-        run: npm test
+      - name: 单元测试 + 覆盖率阈值
+        run: npm run test:coverage
+
+  # 打包冒烟（issue #30）：每次 push/PR 验证「能出可运行产物」，发版风险前移。
+  # 用 electron-builder --dir（仅解包目录，跳过 NSIS 安装包）提速；
+  # Windows 目标在 windows-latest 原生构建，避免 Linux 依赖 wine。
+  build-smoke:
+    runs-on: windows-latest
+    env:
+      # 二进制下载走镜像（GitHub 直连易超时，项目记忆已记录）
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 缓存 electron / electron-builder 下载目录
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: ${{ runner.os }}-eb-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-eb-
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 打包冒烟（electron-builder --dir）
+        run: npm run build:dir
+
+      - name: 校验产物存在
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'release\win-unpacked\SafeBox.exe')) {
+            Write-Error '打包冒烟失败：release\win-unpacked\SafeBox.exe 不存在'
+            exit 1
+          }
+          Write-Host '打包冒烟通过：SafeBox.exe 已生成'
