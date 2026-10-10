@@ -21,6 +21,7 @@ describe('LockManager', () => {
     lock = new LockManager(tmpDir)
     lock.init()
     mockState.idleSeconds = 0
+    mockState.powerMonitorListeners.clear()
   })
 
   afterEach(() => {
@@ -28,6 +29,7 @@ describe('LockManager', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     mockState.idleSeconds = 0
+    mockState.powerMonitorListeners.clear()
     fs.rmSync(tmpDir, { recursive: true, force: true })
   })
 
@@ -212,7 +214,7 @@ describe('LockManager', () => {
     })
   })
 
-  describe('系统空闲自动锁定', () => {
+  describe('系统空闲自动锁定（轮询兜底，间隔 30s）', () => {
     function startMonitor(): void {
       lock.setupPin(undefined, '123456')
       store.add({ title: 'T1', category: 'other', url: '', username: '', password: '', notes: '' })
@@ -224,7 +226,7 @@ describe('LockManager', () => {
     it('空闲超过阈值（5 分钟）自动锁定', () => {
       startMonitor()
       mockState.idleSeconds = 301
-      vi.advanceTimersByTime(10_500)
+      vi.advanceTimersByTime(30_500)
       expect(lock.isLocked).toBe(true)
       expect(store.list()).toEqual([])
     })
@@ -232,7 +234,7 @@ describe('LockManager', () => {
     it('空闲未超阈值不锁定', () => {
       startMonitor()
       mockState.idleSeconds = 10
-      vi.advanceTimersByTime(21_000)
+      vi.advanceTimersByTime(61_000)
       expect(lock.isLocked).toBe(false)
       expect(store.list()).toHaveLength(1)
     })
@@ -240,11 +242,48 @@ describe('LockManager', () => {
     it('已锁定时空闲轮询不重复触发', () => {
       startMonitor()
       mockState.idleSeconds = 301
-      vi.advanceTimersByTime(10_500)
+      vi.advanceTimersByTime(30_500)
       expect(lock.isLocked).toBe(true)
       // 持续空闲不再触发广播/清空等副作用
-      vi.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(120_000)
       expect(lock.isLocked).toBe(true)
+    })
+  })
+
+  describe('系统锁屏事件即时锁定（powerMonitor lock-screen）', () => {
+    it('lock-screen 事件立即锁定，无需等待轮询', () => {
+      lock.setupPin(undefined, '123456')
+      store.add({ title: 'T1', category: 'other', url: '', username: '', password: '', notes: '' })
+      lock.startIdleMonitor(store)
+      // 空闲远低于阈值：排除轮询路径，证明锁定来自事件
+      mockState.idleSeconds = 0
+      expect(lock.isLocked).toBe(false)
+      mockState.emitPowerMonitorEvent('lock-screen')
+      expect(lock.isLocked).toBe(true)
+      expect(store.list()).toEqual([])
+    })
+
+    it('监听器随 startIdleMonitor 注册、stopIdleMonitor 移除', () => {
+      lock.startIdleMonitor(store)
+      expect(mockState.powerMonitorListeners.get('lock-screen')?.size).toBe(1)
+      lock.stopIdleMonitor()
+      expect(mockState.powerMonitorListeners.get('lock-screen')?.size).toBe(0)
+      // 移除后事件不再触发锁定
+      lock.setupPin(undefined, '123456')
+      mockState.emitPowerMonitorEvent('lock-screen')
+      expect(lock.isLocked).toBe(false)
+    })
+
+    it('未设置 PIN 时事件触发不锁定（lock 幂等短路）', () => {
+      lock.startIdleMonitor(store)
+      mockState.emitPowerMonitorEvent('lock-screen')
+      expect(lock.isLocked).toBe(false)
+    })
+
+    it('重复 startIdleMonitor 不叠加监听器', () => {
+      lock.startIdleMonitor(store)
+      lock.startIdleMonitor(store)
+      expect(mockState.powerMonitorListeners.get('lock-screen')?.size).toBe(1)
     })
   })
 })

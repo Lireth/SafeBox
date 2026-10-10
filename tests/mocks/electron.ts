@@ -10,7 +10,13 @@ export const mockState = {
   /** powerMonitor.getSystemIdleTime() 的返回值（秒） */
   idleSeconds: 0,
   /** BrowserWindow.getAllWindows() 返回的窗口列表（updater 广播使用） */
-  windows: [] as Array<{ isDestroyed: () => boolean; webContents: { send: (channel: string, payload: unknown) => void } }>
+  windows: [] as Array<{ isDestroyed: () => boolean; webContents: { send: (channel: string, payload: unknown) => void } }>,
+  /** powerMonitor 事件监听器注册表（lock-screen 等） */
+  powerMonitorListeners: new Map<string, Set<() => void>>(),
+  /** 触发 powerMonitor 事件（模拟系统锁屏等） */
+  emitPowerMonitorEvent(name: string): void {
+    for (const fn of this.powerMonitorListeners.get(name) ?? []) fn()
+  },
 }
 
 export const app = {
@@ -31,6 +37,17 @@ export const safeStorage = {
 
 export const powerMonitor = {
   getSystemIdleTime: (): number => mockState.idleSeconds,
+  on: (name: string, fn: () => void): void => {
+    let set = mockState.powerMonitorListeners.get(name)
+    if (!set) {
+      set = new Set()
+      mockState.powerMonitorListeners.set(name, set)
+    }
+    set.add(fn)
+  },
+  removeListener: (name: string, fn: () => void): void => {
+    mockState.powerMonitorListeners.get(name)?.delete(fn)
+  },
 }
 
 export const BrowserWindow = {

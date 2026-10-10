@@ -15,8 +15,12 @@ import type { VaultStore } from './vault'
 
 /** 系统空闲自动锁定阈值（秒） */
 const IDLE_LOCK_SECONDS = 5 * 60
-/** 系统空闲检测轮询间隔（毫秒） */
-const IDLE_POLL_MS = 10 * 1000
+/**
+ * 系统空闲检测轮询间隔（毫秒）。
+ * 仅作兜底：Windows/macOS 的即时锁定由 powerMonitor 'lock-screen' 事件覆盖（issue #27），
+ * Linux 无该事件，保留轮询；30 秒间隔在「锁定延迟可接受」与「后台 CPU 占用」间取平衡。
+ */
+const IDLE_POLL_MS = 30 * 1000
 /** PIN 长度限制 */
 const PIN_MIN = 4
 const PIN_MAX = 32
@@ -44,6 +48,8 @@ export class LockManager {
   private failCount = 0
   /** 退避冷却截止时间戳（毫秒）；0 表示无冷却 */
   private cooldownUntil = 0
+  /** powerMonitor 'lock-screen' 事件监听器（注册后保留引用以便移除） */
+  private lockScreenHandler: (() => void) | null = null
 
   constructor(userDataDir: string) {
     this.file = path.join(userDataDir, 'lock.pin')
@@ -157,7 +163,11 @@ export class LockManager {
     this.broadcast(false)
   }
 
-  /** 启动系统空闲轮询：空闲超过阈值自动锁定 */
+  /**
+   * 启动锁定监控：
+   * 1. powerMonitor 'lock-screen' 事件（Windows/macOS）——系统锁屏瞬间立即锁定
+   * 2. 空闲轮询兜底（Linux 无 lock-screen 事件；Windows 快速用户切换等边缘场景）
+   */
   startIdleMonitor(store: VaultStore): void {
     this.stopIdleMonitor()
     this.pollTimer = setInterval(() => {
@@ -170,12 +180,29 @@ export class LockManager {
         // 单次轮询异常忽略
       }
     }, IDLE_POLL_MS)
+    // 事件路径无轮询的 locked 前置短路，lock() 自身幂等（已锁定直接返回）
+    this.lockScreenHandler = () => this.lock(store)
+    try {
+      powerMonitor.on('lock-screen', this.lockScreenHandler)
+      console.info('[lock] 已监听系统锁屏事件（lock-screen），锁屏即时锁定')
+    } catch {
+      // 极端环境（如 headless 测试外）事件不可用：仅依赖轮询兜底
+      this.lockScreenHandler = null
+    }
   }
 
   stopIdleMonitor(): void {
     if (this.pollTimer) {
       clearInterval(this.pollTimer)
       this.pollTimer = null
+    }
+    if (this.lockScreenHandler) {
+      try {
+        powerMonitor.removeListener('lock-screen', this.lockScreenHandler)
+      } catch {
+        // 移除失败忽略
+      }
+      this.lockScreenHandler = null
     }
   }
 
