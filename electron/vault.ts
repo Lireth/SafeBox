@@ -13,6 +13,13 @@ import type { AccountEntry, EntryDraft, LoadStatus, PasswordHistoryItem } from '
 /** 保存时保留的轮换备份份数 */
 const MAX_BACKUPS = 3
 
+/**
+ * 自动备份时间窗（毫秒）：距上次自动备份不足 60 秒则跳过复制，
+ * 避免高频编辑（连续改收藏、逐字保存表单）时 IO 放大与近似备份挤占轮换名额。
+ * 导入合并路径不受此窗约束（强制备份，见 backupCurrent 的 force 参数）。
+ */
+const BACKUP_WINDOW_MS = 60 * 1000
+
 /** 回收站保留时长：超过后自动物理清理 */
 export const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -45,6 +52,10 @@ export class VaultStore {
   private readonly file: string
   private entries: AccountEntry[] = []
   private lastLoadResult: LoadStatus = { status: 'empty' }
+  /** 最近一次自动备份的时间戳（毫秒）；0 表示从未备份，用于时间窗合并（issue #31） */
+  private lastBackupAt = 0
+  /** 已知 .bak 备份清单缓存（时间戳降序）；null 表示尚未做首次全量扫描 */
+  private knownBaks: string[] | null = null
 
   constructor(userDataDir: string) {
     this.file = path.join(userDataDir, 'vault.safebox')
@@ -217,7 +228,7 @@ export class VaultStore {
   /**
    * 导入合并：跳过 id 已存在的条目（不静默覆盖），
    * 全部条目经 normalizeDraft 净化后一次性原子落盘（写盘失败整体回滚）。
-   * 落盘前的 backupCurrent 会自动产生一份「导入前」的完整备份。
+   * 落盘前强制备份（绕过时间窗），保证「导入前」状态任何时刻可回滚。
    */
   mergeEntries(entries: AccountEntry[]): { imported: number; skipped: number } {
     const existing = new Set(this.entries.map((e) => e.id))
@@ -247,7 +258,7 @@ export class VaultStore {
       // 历史密码透传（结构非法条目剔除、截断到上限；空结果归一为 undefined 不落盘冗余）
       passwordHistory: sanitizeHistory(entry.passwordHistory),
     }))
-    this.commit([...this.entries, ...cleaned])
+    this.commit([...this.entries, ...cleaned], true)
     return { imported: cleaned.length, skipped }
   }
 
@@ -273,7 +284,7 @@ export class VaultStore {
       cleaned.push({ ...normalized, id: crypto.randomUUID(), favorite: draft.favorite === true, createdAt: now, updatedAt: now })
     }
     if (cleaned.length === 0) return { imported: 0, skipped }
-    this.commit([...this.entries, ...cleaned])
+    this.commit([...this.entries, ...cleaned], true)
     return { imported: cleaned.length, skipped }
   }
 
@@ -282,20 +293,21 @@ export class VaultStore {
    * 写盘失败时回滚内存到变更前状态，保证内存与磁盘始终一致，
    * 避免后续操作基于「假成功」状态扩大不一致。
    * （要求所有变更以不可变方式构造 next 数组，不原地修改旧对象）
+   * forceBackup=true 用于导入合并等「大改动前必留底」场景，绕过自动备份时间窗。
    */
-  private commit(next: AccountEntry[]): void {
+  private commit(next: AccountEntry[], forceBackup = false): void {
     const previous = this.entries
     this.entries = next
     try {
-      this.save()
+      this.save(forceBackup)
     } catch (err) {
       this.entries = previous
       throw err
     }
   }
 
-  /** 加密并原子写入磁盘（临时文件 + 重命名），并轮换保留最近备份 */
-  private save(): void {
+  /** 加密并原子写入磁盘（临时文件 + 重命名）；真正产生新备份时才执行轮换 */
+  private save(forceBackup = false): void {
     const json = JSON.stringify({ entries: this.entries, savedAt: Date.now() } satisfies StorePayload)
     let meta: StoreFile
     if (safeStorage.isEncryptionAvailable()) {
@@ -306,42 +318,68 @@ export class VaultStore {
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(meta), 'utf-8')
     // 覆盖前将上一份完好数据复制为 .bak，降低误写导致的数据丢失风险
-    this.backupCurrent()
+    const newBak = this.backupCurrent(forceBackup)
     fs.renameSync(tmp, this.file)
-    this.rotateBackups()
+    if (newBak) this.rotateBackups(newBak)
   }
 
-  /** 将当前数据文件复制为带时间戳的 .bak 备份 */
-  private backupCurrent(): void {
+  /**
+   * 将当前数据文件复制为带时间戳的 .bak 备份，返回新备份文件名；
+   * 未产生备份（时间窗内跳过 / 数据文件尚不存在 / 复制失败）返回 null。
+   * 时间窗合并（issue #31）：距上次自动备份 < 60 秒则跳过，
+   * 高频编辑时避免 IO 放大与近似备份挤占轮换名额；force=true 时无视时间窗。
+   */
+  private backupCurrent(force: boolean): string | null {
+    const now = Date.now()
+    if (!force && now - this.lastBackupAt < BACKUP_WINDOW_MS) return null
     try {
-      if (fs.existsSync(this.file)) {
-        fs.copyFileSync(this.file, `${this.file}.bak-${Date.now()}`)
-      }
+      if (!fs.existsSync(this.file)) return null
+      const bakName = `${path.basename(this.file)}.bak-${now}`
+      fs.copyFileSync(this.file, path.join(path.dirname(this.file), bakName))
+      this.lastBackupAt = now
+      return bakName
     } catch {
       // 备份失败不阻塞保存
+      return null
     }
   }
 
-  /** 仅保留最近 MAX_BACKUPS 份 .bak 备份，超出部分按时间删除 */
-  private rotateBackups(): void {
+  /**
+   * 轮换保留最近 MAX_BACKUPS 份 .bak，超出部分删除。
+   * 仅在真正产生新备份时调用（issue #31）；
+   * 备份清单缓存在内存（knownBaks，时间戳降序），进程内免重复 readdir+stat；
+   * 首次（含进程重启后）全量扫描一次磁盘，确保遗留旧备份纳入轮换、封顶承诺不被打破。
+   */
+  private rotateBackups(newBak: string): void {
     try {
-      const dir = path.dirname(this.file)
-      const base = path.basename(this.file)
-      const baks = fs
-        .readdirSync(dir)
-        .filter((name) => name.startsWith(`${base}.bak-`))
-        .map((name) => ({ name, mtime: fs.statSync(path.join(dir, name)).mtimeMs }))
-        .sort((a, b) => b.mtime - a.mtime)
-      for (const item of baks.slice(MAX_BACKUPS)) {
+      if (this.knownBaks === null) {
+        // 首次全量扫描：新备份已在结果中（同毫秒重名）时移到首位，否则直接前插
+        const scanned = this.scanBakFiles()
+        this.knownBaks = scanned[0] === newBak ? scanned : [newBak, ...scanned]
+      } else if (this.knownBaks[0] !== newBak) {
+        // 同毫秒重采时文件名相同（磁盘文件已被覆盖，无新增），不重复计入缓存
+        this.knownBaks.unshift(newBak)
+      }
+      for (const stale of this.knownBaks.splice(MAX_BACKUPS)) {
         try {
-          fs.unlinkSync(path.join(dir, item.name))
+          fs.unlinkSync(path.join(path.dirname(this.file), stale))
         } catch {
-          // 单个备份删除失败可忽略
+          // 单个备份删除失败可忽略：放回缓存，下次轮换重试
+          this.knownBaks.push(stale)
         }
       }
     } catch {
       // 轮换失败不影响主流程
     }
+  }
+
+  /** 全量扫描磁盘上的 .bak 备份文件名，按文件名内嵌时间戳降序 */
+  private scanBakFiles(): string[] {
+    const prefix = `${path.basename(this.file)}.bak-`
+    return fs
+      .readdirSync(path.dirname(this.file))
+      .filter((name) => name.startsWith(prefix))
+      .sort((a, b) => Number(b.slice(prefix.length)) - Number(a.slice(prefix.length)))
   }
 }
 

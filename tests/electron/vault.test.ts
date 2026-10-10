@@ -71,12 +71,75 @@ describe('VaultStore', () => {
       expect(fs.existsSync(path.join(tmpDir, status.backupFile as string))).toBe(true)
     })
 
-    it('备份轮换：多次保存仅保留最近 3 份 .bak', () => {
-      for (let i = 0; i < 5; i++) {
+    it('备份轮换：跨时间窗多次保存仅保留最近 3 份 .bak', () => {
+      vi.useFakeTimers()
+      store.add(draft({ title: 'T0' })) // 首次写盘：文件尚不存在，无备份
+      // 每次推进 61 秒越过时间窗，确保每轮都产生新备份，验证轮换封顶
+      for (let i = 1; i <= 5; i++) {
+        vi.advanceTimersByTime(61_000)
         store.add(draft({ title: `T${i}` }))
       }
       const baks = fs.readdirSync(tmpDir).filter((f) => f.includes('.bak-'))
       expect(baks).toHaveLength(3)
+      vi.useRealTimers()
+    })
+
+    it('时间窗合并：60 秒内多次保存只产生 1 份 .bak（issue #31）', () => {
+      vi.useFakeTimers()
+      store.add(draft({ title: 'T0' })) // 创建文件
+      for (let i = 1; i <= 5; i++) {
+        vi.advanceTimersByTime(10_000) // 累计 50 秒，始终 < 60 秒窗口
+        store.add(draft({ title: `T${i}` }))
+      }
+      const baks = fs.readdirSync(tmpDir).filter((f) => f.includes('.bak-'))
+      // 仅第 2 次保存产生 1 份自动备份，其余被时间窗跳过
+      expect(baks).toHaveLength(1)
+      vi.useRealTimers()
+    })
+
+    it('导入合并强制备份：时间窗内仍产生新 .bak（issue #31）', () => {
+      vi.useFakeTimers()
+      store.add(draft({ title: 'T0' }))
+      store.add(draft({ title: 'T1' })) // 产生首份自动备份，锁定时间窗
+      const before = fs.readdirSync(tmpDir).filter((f) => f.includes('.bak-')).length
+      vi.advanceTimersByTime(1_000) // 仍在 60 秒窗口内
+      store.mergeEntries([
+        {
+          id: 'imported-1',
+          title: '导入条目',
+          category: 'other',
+          url: '',
+          username: 'u',
+          password: 'p',
+          notes: '',
+          favorite: false,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ])
+      const after = fs.readdirSync(tmpDir).filter((f) => f.includes('.bak-')).length
+      // 强制备份绕过时间窗：新增 1 份
+      expect(after).toBe(before + 1)
+      vi.useRealTimers()
+    })
+
+    it('重启后首次备份全量扫描磁盘遗留 .bak 并纳入轮换封顶', () => {
+      vi.useFakeTimers()
+      // 首实例跨窗口产生 3 份备份
+      store.add(draft({ title: 'T0' }))
+      for (let i = 1; i <= 3; i++) {
+        vi.advanceTimersByTime(61_000)
+        store.add(draft({ title: `T${i}` }))
+      }
+      expect(fs.readdirSync(tmpDir).filter((f) => f.includes('.bak-'))).toHaveLength(3)
+      // 模拟进程重启：新实例缓存为空，首次备份触发全量扫描
+      const rebooted = new VaultStore(tmpDir)
+      rebooted.load()
+      vi.advanceTimersByTime(61_000)
+      rebooted.add(draft({ title: 'T-after' }))
+      // 遗留 3 份 + 新增 1 份 = 4，轮换封顶回到 3
+      expect(fs.readdirSync(tmpDir).filter((f) => f.includes('.bak-'))).toHaveLength(3)
+      vi.useRealTimers()
     })
 
     it('clearMemory 仅清空内存，磁盘文件不受影响', () => {
