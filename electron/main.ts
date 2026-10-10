@@ -1,6 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron'
 import path from 'node:path'
-import { registerIpcHandlers } from './ipc'
+import { registerIpcHandlers, applyLoginItem } from './ipc'
 import { LockManager } from './lock'
 import { SettingsStore } from './settings'
 import { initAutoUpdater } from './updater'
@@ -94,6 +94,11 @@ if (!app.requestSingleInstanceLock()) {
     if (purged > 0) console.info(`[vault] 已自动清理回收站中 ${purged} 条超期条目`)
     lock.init()
     registerIpcHandlers(store, lock, settings)
+    // 开机自启自愈（issue #34）：系统登录项实际状态与设置不一致时对齐
+    // （覆盖用户手动删注册表键 / 应用移动导致路径失效等场景；开发模式内部跳过）
+    if (app.isPackaged && app.getLoginItemSettings().openAtLogin !== settings.settings.openAtLogin) {
+      applyLoginItem(settings.settings.openAtLogin)
+    }
     createMainWindow()
     // 已设置 PIN 时启动即锁定，防止无人值守泄露
     lock.lock(store)

@@ -18,7 +18,7 @@ describe('SettingsStore', () => {
   it('无文件时返回默认值', () => {
     const store = new SettingsStore(tmpDir)
     expect(store.load()).toEqual(DEFAULT_SETTINGS)
-    expect(store.settings).toEqual({ minimizeToTray: false, language: 'auto' })
+    expect(store.settings).toEqual({ minimizeToTray: false, language: 'auto', openAtLogin: false })
   })
 
   it('update 落盘后重新加载可读取', () => {
@@ -28,16 +28,16 @@ describe('SettingsStore', () => {
     expect(fs.existsSync(path.join(tmpDir, 'settings.json'))).toBe(true)
 
     const rebooted = new SettingsStore(tmpDir)
-    expect(rebooted.load()).toEqual({ minimizeToTray: true, language: 'auto' })
+    expect(rebooted.load()).toEqual({ minimizeToTray: true, language: 'auto', openAtLogin: false })
   })
 
   it('update 仅写入合法字段并返回完整设置', () => {
     const store = new SettingsStore(tmpDir)
     store.load()
     const next = store.update({ minimizeToTray: true, unknownField: 'x' } as never)
-    expect(next).toEqual({ minimizeToTray: true, language: 'auto' })
+    expect(next).toEqual({ minimizeToTray: true, language: 'auto', openAtLogin: false })
     const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf-8'))
-    expect(raw).toEqual({ minimizeToTray: true, language: 'auto' })
+    expect(raw).toEqual({ minimizeToTray: true, language: 'auto', openAtLogin: false })
   })
 
   it('language 合法值持久化并可回读（issue #33）', () => {
@@ -55,6 +55,21 @@ describe('SettingsStore', () => {
     // update 传非法 language 不覆盖现值
     store.update({ language: 'de' } as never)
     expect(store.settings.language).toBe('auto')
+  })
+
+  it('openAtLogin 持久化并可回读；非法值回落 false（issue #34）', () => {
+    const store = new SettingsStore(tmpDir)
+    store.load()
+    expect(store.update({ openAtLogin: true }).openAtLogin).toBe(true)
+    const rebooted = new SettingsStore(tmpDir)
+    expect(rebooted.load().openAtLogin).toBe(true)
+    // 非法类型不覆盖现值
+    rebooted.update({ openAtLogin: 'yes' } as never)
+    expect(rebooted.settings.openAtLogin).toBe(true)
+    // 磁盘字段非法回落默认 false
+    fs.writeFileSync(path.join(tmpDir, 'settings.json'), JSON.stringify({ openAtLogin: 1 }), 'utf-8')
+    const third = new SettingsStore(tmpDir)
+    expect(third.load().openAtLogin).toBe(false)
   })
 
   it('损坏的 JSON 回落默认值且不抛错', () => {

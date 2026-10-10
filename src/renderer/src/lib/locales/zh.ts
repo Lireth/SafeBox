@@ -265,6 +265,9 @@ export const zh = {
     langAuto: '跟随系统',
     langZh: '中文',
     langEn: 'English',
+    openAtLogin: '开机自动启动秘匣',
+    openAtLoginHint: '开启后登录系统时自动启动并直接呈现锁屏，配合锁定 PIN 实现「开机即安全」。',
+    trayAutoStartHint: '已开启「最小化到托盘」，配合开机自启可获得常驻后台的完整体验。',
   },
   hotkeys: {
     title: '快捷键',

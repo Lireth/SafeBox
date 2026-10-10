@@ -13,6 +13,7 @@ import type { AppSettings } from '../shared/types'
 export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTray: false,
   language: 'auto',
+  openAtLogin: false,
 }
 
 export class SettingsStore {
@@ -42,6 +43,9 @@ export class SettingsStore {
         if (obj.language === 'auto' || obj.language === 'zh' || obj.language === 'en') {
           this.current.language = obj.language
         }
+        if (typeof obj.openAtLogin === 'boolean') {
+          this.current.openAtLogin = obj.openAtLogin
+        }
       }
     } catch {
       // 损坏的设置文件：静默回落默认值，不弹窗不打日志（非关键数据）
@@ -54,6 +58,7 @@ export class SettingsStore {
     const next: AppSettings = { ...this.current }
     if (typeof patch.minimizeToTray === 'boolean') next.minimizeToTray = patch.minimizeToTray
     if (patch.language === 'auto' || patch.language === 'zh' || patch.language === 'en') next.language = patch.language
+    if (typeof patch.openAtLogin === 'boolean') next.openAtLogin = patch.openAtLogin
     this.current = next
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8')

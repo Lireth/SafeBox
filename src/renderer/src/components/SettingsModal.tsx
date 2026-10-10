@@ -65,6 +65,20 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
           </label>
           <p className="gen-hint">{t('settings.minimizeHint')}</p>
 
+          <label className="checkbox settings-row">
+            <input
+              type="checkbox"
+              checked={settings.openAtLogin}
+              disabled={busy}
+              onChange={(e) => void persist({ openAtLogin: e.target.checked })}
+            />
+            <span>{t('settings.openAtLogin')}</span>
+          </label>
+          <p className="gen-hint">{t('settings.openAtLoginHint')}</p>
+          {settings.minimizeToTray && !settings.openAtLogin && (
+            <p className="gen-hint">{t('settings.trayAutoStartHint')}</p>
+          )}
+
           <label className="field-label" htmlFor="settings-language">
             {t('settings.languageLabel')}
           </label>

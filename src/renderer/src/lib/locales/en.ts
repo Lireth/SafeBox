@@ -265,6 +265,9 @@ export const en = {
     langAuto: 'System default',
     langZh: '中文',
     langEn: 'English',
+    openAtLogin: 'Launch SafeBox at sign-in',
+    openAtLoginHint: 'When enabled, SafeBox starts automatically at sign-in and shows the lock screen right away — combined with a lock PIN, this means “secure from boot”.',
+    trayAutoStartHint: '“Minimize to tray” is on — enabling launch-at-startup completes the always-on-background experience.',
   },
   hotkeys: {
     title: 'Shortcuts',

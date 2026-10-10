@@ -75,6 +75,8 @@ export interface AppSettings {
   minimizeToTray: boolean
   /** 界面语言：auto 跟随系统（默认），或手动覆盖为 zh / en（issue #33） */
   language: 'auto' | 'zh' | 'en'
+  /** 开机自动启动（注册系统登录项）；false（默认），尊重系统启动项管控（issue #34） */
+  openAtLogin: boolean
 }
 
 /** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */

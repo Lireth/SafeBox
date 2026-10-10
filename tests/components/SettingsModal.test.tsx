@@ -39,10 +39,18 @@ afterEach(() => {
   setLang('zh')
 })
 
+/** 默认设置夹具（AppSettings 必填字段齐全） */
+const baseSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
+  minimizeToTray: false,
+  language: 'zh',
+  openAtLogin: false,
+  ...overrides,
+})
+
 describe('SettingsModal 语言切换', () => {
   it('选择 English：updateSettings 收到 en，弹窗重渲染为英文', async () => {
     const user = userEvent.setup()
-    const { updateSettings } = mockSafebox({ minimizeToTray: false, language: 'zh' })
+    const { updateSettings } = mockSafebox(baseSettings())
     render(<SettingsModal onClose={() => {}} />)
 
     expect(await screen.findByText('设置')).toBeInTheDocument()
@@ -56,10 +64,47 @@ describe('SettingsModal 语言切换', () => {
   it('选择跟随系统（auto）：按系统 locale 解析有效语言', async () => {
     const user = userEvent.setup()
     // 系统 locale 为 en-US：从中文界面选 auto 应解析为英文
-    mockSafebox({ minimizeToTray: false, language: 'zh' }, 'en-US')
+    mockSafebox(baseSettings(), 'en-US')
     render(<SettingsModal onClose={() => {}} />)
     await screen.findByText('设置')
     await user.selectOptions(screen.getByLabelText('界面语言'), 'auto')
     await waitFor(() => expect(getLang()).toBe('en'))
+  })
+})
+
+describe('SettingsModal 开机自启开关（issue #34）', () => {
+  it('勾选开机自启：updateSettings 收到 openAtLogin:true，复选框变为选中', async () => {
+    const user = userEvent.setup()
+    const { updateSettings } = mockSafebox(baseSettings({ openAtLogin: false }))
+    render(<SettingsModal onClose={() => {}} />)
+
+    const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', { name: '开机自动启动秘匣' })
+    expect(checkbox.checked).toBe(false)
+    await user.click(checkbox)
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ openAtLogin: true }))
+    // 持久化回读后 UI 反映新状态
+    await waitFor(() => expect(checkbox.checked).toBe(true))
+  })
+
+  it('取消勾选：updateSettings 收到 openAtLogin:false', async () => {
+    const user = userEvent.setup()
+    const { updateSettings } = mockSafebox(baseSettings({ openAtLogin: true }))
+    render(<SettingsModal onClose={() => {}} />)
+
+    const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', { name: '开机自动启动秘匣' })
+    expect(checkbox.checked).toBe(true)
+    await user.click(checkbox)
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ openAtLogin: false }))
+  })
+
+  it('开启托盘但未开自启时显示联动提示，两者都开时隐藏', async () => {
+    const user = userEvent.setup()
+    mockSafebox(baseSettings({ minimizeToTray: true, openAtLogin: false }))
+    render(<SettingsModal onClose={() => {}} />)
+    // 初始：托盘开、自启关 → 显示联动提示
+    expect(await screen.findByText(/配合开机自启可获得常驻后台/)).toBeInTheDocument()
+    // 勾选自启后 → 联动提示消失
+    await user.click(screen.getByRole('checkbox', { name: '开机自动启动秘匣' }))
+    await waitFor(() => expect(screen.queryByText(/配合开机自启可获得常驻后台/)).toBeNull())
   })
 })

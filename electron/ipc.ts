@@ -11,6 +11,20 @@ import { VaultStore } from './vault'
 /** 剪贴板自动清空时长（毫秒） */
 const CLIPBOARD_CLEAR_MS = 30 * 1000
 
+/**
+ * 应用开机自启设置到系统登录项（issue #34，Windows 注册表 Run 键）。
+ * 开发模式跳过（避免把 electron.exe 注册为启动项）；失败静默降级不阻塞设置保存。
+ */
+export function applyLoginItem(openAtLogin: boolean): void {
+  if (!app.isPackaged) return
+  try {
+    app.setLoginItemSettings({ openAtLogin })
+    console.info(`[settings] 开机自启已${openAtLogin ? '开启' : '关闭'}`)
+  } catch (err) {
+    console.warn('[settings] 设置登录项失败:', err)
+  }
+}
+
 export function registerIpcHandlers(store: VaultStore, lock: LockManager, settings: SettingsStore): void {
   // ---- 应用状态 ----
 
@@ -28,7 +42,10 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   ipcMain.handle('settings:update', (_event, patch: unknown) => {
     const p = (patch && typeof patch === 'object' ? patch : {}) as Partial<AppSettings>
-    return settings.update(p)
+    const next = settings.update(p)
+    // 开机自启即时生效（issue #34）：仅当本次更新涉及该字段
+    if (p.openAtLogin !== undefined) applyLoginItem(next.openAtLogin)
+    return next
   })
 
   // 系统区域设置（如 zh-CN / en-US），供渲染端「跟随系统」语言检测（issue #33）
