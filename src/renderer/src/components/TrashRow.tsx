@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
 import { t, useLang } from '../lib/i18n'
@@ -20,8 +20,8 @@ function remainingDays(deletedAt: number, now: number): number {
   return Math.max(1, Math.ceil((deletedAt + TRASH_RETENTION_MS - now) / DAY_MS))
 }
 
-/** 回收站条目行：不可打开详情，仅提供恢复与彻底删除操作 */
-export function TrashRow({ entry, isActive = false, onRestore, onPurge }: TrashRowProps): React.JSX.Element {
+/** 回收站条目行：不可打开详情，仅提供恢复与彻底删除操作（O23：React.memo 包裹，理由同 EntryRow） */
+function TrashRowBase({ entry, isActive = false, onRestore, onPurge }: TrashRowProps): React.JSX.Element {
   useLang()
   // 挂载时刻的时间快照：剩余天数随时间流逝而减少，但行内展示取挂载时值即可
   const [now] = useState(() => Date.now())
@@ -68,3 +68,5 @@ export function TrashRow({ entry, isActive = false, onRestore, onPurge }: TrashR
     </div>
   )
 }
+
+export const TrashRow = memo(TrashRowBase)

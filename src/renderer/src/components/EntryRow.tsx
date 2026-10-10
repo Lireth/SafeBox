@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
 import { t, useLang } from '../lib/i18n'
@@ -17,7 +18,12 @@ function maskPassword(password: string): string {
   return '•'.repeat(Math.min(password.length, 12))
 }
 
-export function EntryRow({
+/**
+ * 账号列表行（O23：React.memo 包裹）。
+ * 列表渲染时未变更条目的 entry 引用不变、回调由 App 层 useCallback 稳定，
+ * 箭头导航（isActive 变化）或搜索输入重渲染列表时其余行直接跳过。
+ */
+function EntryRowBase({
   entry,
   isActive = false,
   onOpen,
@@ -95,3 +101,5 @@ export function EntryRow({
     </div>
   )
 }
+
+export const EntryRow = memo(EntryRowBase)

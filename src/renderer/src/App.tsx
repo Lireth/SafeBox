@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { EntryRow } from './components/EntryRow'
 import { EntryFormModal } from './components/EntryFormModal'
@@ -175,11 +175,13 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  function showToast(message: string, type: 'success' | 'error' = 'success'): void {
+  // useCallback 稳定引用（O23）：列表行 EntryRow/TrashRow 已 memo 化，
+  // 回调引用变化会使 memo 失效，故传给行组件的回调全部保持稳定
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success'): void => {
     window.clearTimeout(toastTimer.current)
     setToast({ type, message })
     toastTimer.current = window.setTimeout(() => setToast(null), 1800)
-  }
+  }, [])
 
   // 当前筛选下可见的账号：收藏优先，其余按更新时间倒序；回收站按删除时间倒序
   const activeEntries = useMemo(() => entries.filter((e) => !e.deletedAt), [entries])
@@ -336,15 +338,20 @@ export default function App(): React.JSX.Element {
   }
 
   /** 从回收站恢复条目（清除软删除标记） */
-  async function handleRestore(entry: AccountEntry): Promise<void> {
-    try {
-      const restored = await window.safebox.restoreEntry(entry.id)
-      setEntries((prev) => prev.map((e) => (e.id === restored.id ? restored : e)))
-      showToast(t('toast.restored'))
-    } catch (err) {
-      showToast(errorMessage(err, t('toast.restoreFailed')), 'error')
-    }
-  }
+  const handleRestore = useCallback(
+    (entry: AccountEntry): void => {
+      void (async (): Promise<void> => {
+        try {
+          const restored = await window.safebox.restoreEntry(entry.id)
+          setEntries((prev) => prev.map((e) => (e.id === restored.id ? restored : e)))
+          showToast(t('toast.restored'))
+        } catch (err) {
+          showToast(errorMessage(err, t('toast.restoreFailed')), 'error')
+        }
+      })()
+    },
+    [showToast],
+  )
 
   /** 彻底删除回收站中的条目（物理删除，不可恢复） */
   async function handleConfirmPurge(): Promise<void> {
@@ -388,22 +395,27 @@ export default function App(): React.JSX.Element {
     }
   }
 
-  async function handleToggleFavorite(entry: AccountEntry): Promise<void> {
-    try {
-      const updated = await window.safebox.toggleFavorite(entry.id)
-      setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
-      setDetailEntry((cur) => (cur?.id === updated.id ? updated : cur))
-    } catch (err) {
-      showToast(errorMessage(err, t('toast.opFailed')), 'error')
-    }
-  }
+  const handleToggleFavorite = useCallback(
+    (entry: AccountEntry): void => {
+      void (async (): Promise<void> => {
+        try {
+          const updated = await window.safebox.toggleFavorite(entry.id)
+          setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
+          setDetailEntry((cur) => (cur?.id === updated.id ? updated : cur))
+        } catch (err) {
+          showToast(errorMessage(err, t('toast.opFailed')), 'error')
+        }
+      })()
+    },
+    [showToast],
+  )
 
-  function handleCopy(text: string, message: string): void {
+  const handleCopy = useCallback((text: string, message: string): void => {
     window.safebox
       .copyText(text)
       .then(() => showToast(message))
       .catch((err) => showToast(errorMessage(err, t('toast.copyFailed')), 'error'))
-  }
+  }, [showToast])
 
   async function handleLockNow(): Promise<void> {
     try {
@@ -566,7 +578,7 @@ export default function App(): React.JSX.Element {
                   key={entry.id}
                   entry={entry}
                   isActive={index === activeIndex}
-                  onRestore={(e) => void handleRestore(e)}
+                  onRestore={handleRestore}
                   onPurge={setPurgeTarget}
                 />
               ))
@@ -602,7 +614,7 @@ export default function App(): React.JSX.Element {
                 entry={entry}
                 isActive={index === activeIndex}
                 onOpen={setDetailEntry}
-                onToggleFavorite={(e) => void handleToggleFavorite(e)}
+                onToggleFavorite={handleToggleFavorite}
                 onCopy={handleCopy}
               />
             ))
