@@ -1,0 +1,80 @@
+name: Release
+
+# O24：tag 触发的自动发布（O24）。
+# push tag v* → 校验 tag 与 package.json 版本一致 → 构建安装包 → electron-builder
+# 自动创建 GitHub Release 并上传 SafeBox-Setup-*.exe 与 latest.yml（sha512 校验闭环，
+# electron-updater 据此完成自动更新）。
+# 说明：
+# - ci.yml 的 push 过滤器仅含 branches，tag 推送只触发本 workflow，两者互不干扰
+# - 首次使用建议先打预发布 tag 人工验证一轮「下载安装包 / 应用内自动更新」后再切正式 tag
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 创建 Release 与上传产物需要写权限
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      # 二进制下载走镜像（GitHub 直连易超时，项目记忆已记录）
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+      # electron-builder 发布凭据（publish 配置见 electron-builder.yml：Lireth/SafeBox）
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 缓存 electron / electron-builder 下载目录
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: ${{ runner.os }}-eb-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-eb-
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 防呆：tag 与 package.json version 不一致时终止（发布产物版本以 package.json 为准）
+      - name: 校验 tag 与 package.json 版本一致
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $version) {
+            Write-Error "tag（$tag）与 package.json version（$version）不一致，请修正后重打 tag"
+            exit 1
+          }
+          Write-Host "版本校验通过：v$tag"
+
+      - name: 构建并发布（electron-builder --publish always）
+        run: npm run release
+
+      # 事后产物校验：发布步骤已在上一步完成（失败即 job 失败），此处确认本地产物完整并输出清单
+      - name: 校验发布产物
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'release\win-unpacked\SafeBox.exe')) {
+            Write-Error '发布校验失败：release\win-unpacked\SafeBox.exe 不存在'
+            exit 1
+          }
+          $installer = Get-ChildItem 'release' -Filter 'SafeBox-Setup-*.exe' | Select-Object -First 1
+          if (-not $installer) {
+            Write-Error '发布校验失败：release 目录中未找到安装包'
+            exit 1
+          }
+          if (-not (Test-Path 'release\latest.yml')) {
+            Write-Error '发布校验失败：release\latest.yml 不存在（自动更新元数据缺失）'
+            exit 1
+          }
+          Write-Host "发布完成：$($installer.Name) + latest.yml 已上传至 GitHub Release"
