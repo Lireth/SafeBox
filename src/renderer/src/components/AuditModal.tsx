@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { EntryAvatar } from './EntryAvatar'
-import { auditEntries, countRiskyEntries, type AuditReport } from '../lib/audit'
+import { auditEntries, type AuditReport } from '../lib/audit'
+import { findPwnedEntries } from '../lib/hibp'
 import { formatDate } from '../lib/format'
 import { passwordStrength } from '../lib/password'
 import { t, useLang } from '../lib/i18n'
@@ -15,12 +16,21 @@ interface AuditModalProps {
   onEdit: (entry: AccountEntry) => void
 }
 
-/** 密码安全体检面板：弱口令 / 重复密码 / 久未更新三维扫描（全本地） */
+/** 泄露检查状态（F21）：null=进行中/未启用（配合 pwnedEnabled 区分），failed=网络失败 */
+interface PwnedState {
+  list: AccountEntry[]
+  failed: boolean
+}
+
+/** 密码安全体检面板：弱口令 / 重复密码 / 久未更新（全本地）+ 泄露检查（F21，opt-in 网络第四维） */
 export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React.JSX.Element {
   useLang()
   const [report, setReport] = useState<AuditReport | null>(null)
   /** 扫描异常（如 WebCrypto 不可用）：展示错误态而非无限 loading */
   const [failed, setFailed] = useState(false)
+  /** 泄露检查（opt-in）：仅当设置开启时执行网络查询 */
+  const [pwnedEnabled, setPwnedEnabled] = useState(false)
+  const [pwned, setPwned] = useState<PwnedState | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -34,14 +44,35 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
       .catch(() => {
         if (!cancelled) setFailed(true)
       })
+    // 泄露检查：读取设置判定 opt-in；开启才发起 k-匿名查询（设置读取失败视为未开启）
+    void (async () => {
+      try {
+        const settings = await window.safebox.getSettings()
+        if (cancelled || !settings.pwnedCheckEnabled) return
+        setPwnedEnabled(true)
+        setPwned(null)
+        const result = await findPwnedEntries(entries)
+        if (!cancelled) setPwned({ list: result.list, failed: result.failed })
+      } catch {
+        // 保持未启用状态
+      }
+    })()
     return () => {
       cancelled = true
     }
   }, [entries])
 
-  const risky = report ? countRiskyEntries(report) : 0
-  const hasIssues =
-    report !== null && (report.weak.length > 0 || report.duplicateGroups.length > 0 || report.stale.length > 0)
+  const pwnedList = pwned?.list ?? []
+  // 风险计数：本地三维 + 泄露命中，按条目去重
+  const riskyIds = new Set<string>()
+  if (report) {
+    for (const e of report.weak) riskyIds.add(e.id)
+    for (const group of report.duplicateGroups) for (const e of group) riskyIds.add(e.id)
+    for (const e of report.stale) riskyIds.add(e.id)
+  }
+  for (const e of pwnedList) riskyIds.add(e.id)
+  const risky = riskyIds.size
+  const hasIssues = report !== null && (risky > 0)
 
   function renderEntryItem(entry: AccountEntry, detail: string): React.JSX.Element {
     return (
@@ -129,6 +160,31 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
                   {report.stale.map((entry) => renderEntryItem(entry, t('audit.staleDetail', { date: formatDate(entry.updatedAt) })))}
                 </section>
               )}
+
+              {/* 泄露检查（F21，opt-in）：null=查询进行中 */}
+              {pwnedEnabled &&
+                (pwned === null ? (
+                  <section className="audit-group">
+                    <h4 className="audit-group-title">
+                      <Icon name="download" size={14} className="audit-stale" />
+                      {t('audit.pwnedScanning')}
+                    </h4>
+                  </section>
+                ) : (
+                  <>
+                    {pwnedList.length > 0 && (
+                      <section className="audit-group">
+                        <h4 className="audit-group-title">
+                          <Icon name="alert-triangle" size={14} className="audit-weak" />
+                          {t('audit.pwnedTitle')}
+                          <span className="audit-count">{pwnedList.length}</span>
+                        </h4>
+                        {pwnedList.map((entry) => renderEntryItem(entry, t('audit.pwnedDetail')))}
+                      </section>
+                    )}
+                    {pwned.failed && <p className="form-error">{t('audit.pwnedFailed')}</p>}
+                  </>
+                ))}
             </>
           ) : (
             <div className="audit-empty">
@@ -138,7 +194,7 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
             </div>
           )}
 
-          <p className="backup-hint audit-footnote">{t('audit.footnote')}</p>
+          <p className="backup-hint audit-footnote">{pwnedEnabled ? t('audit.footnoteNet') : t('audit.footnote')}</p>
         </div>
       )}
     </Modal>

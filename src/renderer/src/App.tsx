@@ -458,6 +458,13 @@ export default function App(): React.JSX.Element {
     return result
   }
 
+  /** Bitwarden 未加密 JSON 导入（F22） */
+  async function handleImportJson(): Promise<CsvImportResult> {
+    const result = await window.safebox.importBitwardenJson()
+    if (!result.canceled) await refetchEntries()
+    return result
+  }
+
   async function handleExportCsv(pin: string | undefined): Promise<CsvExportResult> {
     return window.safebox.exportCsv(pin)
   }
@@ -701,6 +708,7 @@ export default function App(): React.JSX.Element {
           onExport={handleExportBackup}
           onImport={handleImportBackup}
           onImportCsv={handleImportCsv}
+          onImportJson={handleImportJson}
           onExportCsv={handleExportCsv}
           pinEnabled={pinEnabled}
         />

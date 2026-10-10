@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { EntryAvatar } from './EntryAvatar'
 import { TotpDisplay } from './TotpDisplay'
 import { PasswordHistorySection } from './PasswordHistorySection'
 import { getCategory } from '../lib/categories'
-import { TOTP_DIGITS, TOTP_PERIOD_SECONDS } from '../lib/totp'
+import { TOTP_DIGITS, TOTP_PERIOD_SECONDS, buildOtpauthUrl } from '../lib/totp'
+import { totpQrDataUri } from '../lib/totpQr'
 import { formatDateTime, maskPassword } from '../lib/format'
 import { useAutoHide } from '../lib/useAutoHide'
 import { t, useLang } from '../lib/i18n'
@@ -37,6 +38,9 @@ export function EntryDetailModal({
 
   // 切换查看对象时重置密码可见状态（渲染期调整状态，避免 effect 级联渲染）
   const [prevEntryId, setPrevEntryId] = useState(entry.id)
+  // TOTP 迁移二维码（F24）：展开/收起状态 + data URI 缓存
+  const [qrOpen, setQrOpen] = useState(false)
+  const qrDataUri = useMemo(() => totpQrDataUri(entry), [entry])
   if (prevEntryId !== entry.id) {
     setPrevEntryId(entry.id)
     passwordVisible.hide()
@@ -157,6 +161,28 @@ export function EntryDetailModal({
               algorithm={entry.totpAlgorithm}
               onCopy={onCopy}
             />
+            <div className="field-row">
+              <button type="button" className="text-btn" onClick={() => setQrOpen((v) => !v)}>
+                <Icon name="grid" size={13} />
+                {qrOpen ? t('detail.qrHide') : t('detail.qrShow')}
+              </button>
+            </div>
+            {qrOpen && qrDataUri && (
+              <div className="totp-qr-panel">
+                <img src={qrDataUri} alt={t('detail.qrTitle')} width={180} height={180} className="totp-qr-img" />
+                <p className="gen-hint">{t('detail.qrHint')}</p>
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => {
+                    const uri = buildOtpauthUrl(entry)
+                    if (uri) onCopy(uri, t('detail.qrCopied'))
+                  }}
+                >
+                  {t('detail.qrLinkLabel')}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

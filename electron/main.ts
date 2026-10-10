@@ -1,6 +1,7 @@
 import { app, BrowserWindow, screen, shell } from 'electron'
 import path from 'node:path'
 import { clearTrackedClipboard, registerIpcHandlers, applyLoginItem } from './ipc'
+import { maybeRunAutoBackup } from './autobackup'
 import { initLogger } from './logger'
 import { LockManager } from './lock'
 import { SettingsStore } from './settings'
@@ -163,6 +164,13 @@ if (!app.requestSingleInstanceLock()) {
     lock.lock(store)
     // 空闲自动锁定：阈值取设置项 autoLockMinutes（0=永不），getter 动态读取使设置变更即时生效（O20）
     lock.startIdleMonitor(store, () => settings.settings.autoLockMinutes * 60)
+
+    // 定时自动备份（F23）：启动时检查一次 + 每 6 小时兜底轮询（内部自判间隔/目录/口令条件）
+    const runAutoBackup = (): void => {
+      maybeRunAutoBackup(store, settings, app.getPath('userData'))
+    }
+    runAutoBackup()
+    setInterval(runAutoBackup, 6 * 60 * 60 * 1000)
     // 自动更新检查（开发环境自动跳过）
     initAutoUpdater()
 

@@ -47,7 +47,11 @@ const INVOKE_CHANNELS = new Set([
   'backup:export',
   'backup:import',
   'backup:import-csv',
+  'backup:import-json',
   'backup:export-csv',
+  'backup:auto-dir-select',
+  'backup:auto-password',
+  'backup:auto-status',
   'logs:export',
   'logs:renderer-error',
   'update:install',
@@ -89,7 +93,11 @@ export const electronAPI: SafeBoxAPI = {
   exportEncryptedBackup: (password) => invoke<BackupExportResult>('backup:export', password),
   importEncryptedBackup: (password) => invoke<BackupImportResult>('backup:import', password),
   importCsv: () => invoke<CsvImportResult>('backup:import-csv'),
+  importBitwardenJson: () => invoke<CsvImportResult>('backup:import-json'),
   exportCsv: (pin) => invoke<CsvExportResult>('backup:export-csv', pin),
+  selectAutoBackupDir: () => invoke<{ canceled: boolean; dir?: string }>('backup:auto-dir-select'),
+  setAutoBackupPassword: (password) => invoke<{ set: boolean }>('backup:auto-password', password),
+  getAutoBackupStatus: () => invoke<{ pwdSet: boolean }>('backup:auto-status'),
   onUpdateReady: (listener) => {
     const wrapped = (_event: IpcRendererEvent, info: { version: string }): void => listener(info)
     ipcRenderer.on('update:available', wrapped)

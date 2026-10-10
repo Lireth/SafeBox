@@ -17,6 +17,7 @@ function mockSafebox(settings: AppSettings, locale = 'zh-CN') {
   getLocale.mockResolvedValue(locale)
   const api: Record<string, unknown> = {
     getSettings: vi.fn<() => Promise<AppSettings>>().mockResolvedValue(settings),
+    getAutoBackupStatus: vi.fn<() => Promise<{ pwdSet: boolean }>>().mockResolvedValue({ pwdSet: false }),
     updateSettings,
     getLocale,
     exportDiagnostics,
@@ -50,6 +51,9 @@ const baseSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
   lockOnMinimize: false,
   skipUpdateVersion: '',
   windowMaximized: false,
+  autoBackupEnabled: false,
+  autoBackupDays: 7,
+  pwnedCheckEnabled: false,
   ...overrides,
 })
 

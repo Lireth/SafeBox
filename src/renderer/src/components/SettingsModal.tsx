@@ -19,6 +19,46 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
   /** 手动检查更新状态（F25）：idle 未检查 / checking 进行中 / 其余为检查结论 */
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(null)
+  /** 定时自动备份（F23）：口令输入 / 已设置状态 / 操作提示 */
+  const [autoPwd, setAutoPwd] = useState('')
+  const [autoPwdSet, setAutoPwdSet] = useState(false)
+  const [autoNotice, setAutoNotice] = useState('')
+
+  useEffect(() => {
+    void window.safebox
+      .getAutoBackupStatus()
+      .then((s) => setAutoPwdSet(s.pwdSet))
+      .catch(() => {})
+  }, [])
+
+  /** 选择自动备份目录：主进程对话框选定后直接落盘（渲染端不接触路径写入权） */
+  async function selectAutoDir(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    try {
+      const result = await window.safebox.selectAutoBackupDir()
+      if (!result.canceled && settings) setSettings({ ...settings, autoBackupDir: result.dir ?? '' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 保存自动备份口令（safeStorage 加密存储，保存后不可回读） */
+  async function saveAutoPwd(): Promise<void> {
+    if (busy || !autoPwd) return
+    setBusy(true)
+    setAutoNotice('')
+    try {
+      await window.safebox.setAutoBackupPassword(autoPwd)
+      setAutoPwdSet(true)
+      setAutoPwd('')
+      setAutoNotice(t('settings.autoBackupPwdSaved'))
+    } catch (err) {
+      setAutoNotice(resolveIpcError(err, t('settings.saveFailed')))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -159,6 +199,75 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
             <span>{t('settings.lockOnMinimize')}</span>
           </label>
           <p className="gen-hint">{t('settings.lockOnMinimizeHint')}</p>
+
+          <p className="field-label">{t('settings.autoBackupSection')}</p>
+          <label className="checkbox settings-row">
+            <input
+              type="checkbox"
+              checked={settings.autoBackupEnabled}
+              disabled={busy}
+              onChange={(e) => void persist({ autoBackupEnabled: e.target.checked })}
+            />
+            <span>{t('settings.autoBackupEnable')}</span>
+          </label>
+          {settings.autoBackupEnabled && (
+            <>
+              <label className="field-label" htmlFor="settings-autobackup-days">
+                {t('settings.autoBackupDaysLabel')}
+              </label>
+              <select
+                id="settings-autobackup-days"
+                className="input"
+                value={settings.autoBackupDays}
+                disabled={busy}
+                onChange={(e) => void persist({ autoBackupDays: Number(e.target.value) })}
+              >
+                {[1, 3, 7, 14, 30].map((d) => (
+                  <option key={d} value={d}>
+                    {t('settings.autoBackupDays', { n: d })}
+                  </option>
+                ))}
+              </select>
+              <div className="field-row">
+                <span className="gen-hint" style={{ flex: 1, wordBreak: 'break-all' }}>
+                  {settings.autoBackupDir || t('settings.autoBackupNoDir')}
+                </span>
+                <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void selectAutoDir()}>
+                  {t('settings.autoBackupChooseDir')}
+                </button>
+              </div>
+              <div className="field-row">
+                <input
+                  id="settings-autobackup-pwd"
+                  className="input"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder={t('settings.autoBackupPwdPlaceholder')}
+                  value={autoPwd}
+                  disabled={busy}
+                  onChange={(e) => setAutoPwd(e.target.value)}
+                />
+                <button type="button" className="btn btn-ghost" disabled={busy || !autoPwd} onClick={() => void saveAutoPwd()}>
+                  {t('settings.autoBackupSavePwd')}
+                </button>
+              </div>
+              <p className="gen-hint">
+                {autoNotice || (autoPwdSet ? t('settings.autoBackupPwdSet') : t('settings.autoBackupPwdMissing'))}
+              </p>
+            </>
+          )}
+          <p className="gen-hint">{t('settings.autoBackupHint')}</p>
+
+          <label className="checkbox settings-row">
+            <input
+              type="checkbox"
+              checked={settings.pwnedCheckEnabled}
+              disabled={busy}
+              onChange={(e) => void persist({ pwnedCheckEnabled: e.target.checked })}
+            />
+            <span>{t('settings.pwnedCheck')}</span>
+          </label>
+          <p className="gen-hint">{t('settings.pwnedCheckHint')}</p>
 
           <p className="field-label">{t('settings.updateSection')}</p>
           <button

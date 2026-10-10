@@ -1,9 +1,11 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
+import { mapBitwardenJson } from './bitwarden'
 import { buildCsv, mapCsvEntries, parseCsvRows } from './csv'
 import { SafeBoxError, toIpcError } from './errors'
 import { exportDiagnostics } from './logger'
+import { clearAutoBackupPassword, loadAutoBackupPassword, saveAutoBackupPassword } from './autobackup'
 import type { AppSettings, EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import type { SettingsStore } from './settings'
@@ -79,7 +81,10 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   handleIpc('settings:update', (_event, patch: unknown) => {
     const p = (patch && typeof patch === 'object' ? patch : {}) as Partial<AppSettings>
-    const next = settings.update(p)
+    // autoBackupDir 只能经 backup:auto-dir-select 对话框设置（防渲染端注入任意写入路径，F23）
+    const safePatch: Partial<AppSettings> = { ...p }
+    delete (safePatch as { autoBackupDir?: unknown }).autoBackupDir
+    const next = settings.update(safePatch)
     // 开机自启即时生效（issue #34）：仅当本次更新涉及该字段
     if (p.openAtLogin !== undefined) applyLoginItem(next.openAtLogin)
     return next
@@ -178,6 +183,25 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
     }),
   )
 
+  // ---- Bitwarden 未加密 JSON 导入（F22；锁定期间拒绝，链路复用 CSV 导入的去重与强制备份） ----
+
+  handleIpc('backup:import-json', () =>
+    guard(async () => {
+      const win = mainWindow()
+      const result = await dialog.showOpenDialog(win, {
+        title: '从 Bitwarden 导入 JSON',
+        filters: [{ name: 'Bitwarden 导出 (JSON)', extensions: ['json'] }],
+        properties: ['openFile'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+      // 明文 JSON 仅在内存中短暂存在：不落临时文件、不写日志
+      const text = fs.readFileSync(result.filePaths[0], 'utf-8')
+      const { drafts, invalid } = mapBitwardenJson(text)
+      const stats = store.mergeDrafts(drafts)
+      return { canceled: false, total: drafts.length, invalid, ...stats }
+    }),
+  )
+
   // ---- 明文 CSV 导出（数据可携带性；锁定期间拒绝，启用 PIN 时强制身份校验） ----
 
   handleIpc('backup:export-csv', (_event, pin: unknown) =>
@@ -211,6 +235,37 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
 
   // 手动检查更新（F25）：同步返回检查结论（发现新版本时后台继续下载，就绪后经既有横幅通知）
   handleIpc('update:check', () => checkForUpdate())
+
+  // ---- 定时自动备份（F23） ----
+
+  // 目录只能经主进程对话框选定并直接落盘（渲染端不接触路径写入权）
+  handleIpc('backup:auto-dir-select', async () => {
+    const win = mainWindow()
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择自动备份目录',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+    const next = settings.update({ autoBackupDir: result.filePaths[0] })
+    return { canceled: false, dir: next.autoBackupDir ?? '' }
+  })
+
+  // 口令设置属敏感操作：锁定态拒绝（guard）；传空串清除
+  handleIpc('backup:auto-password', (_event, password: unknown) =>
+    guard(() => {
+      if (password === null || password === '') {
+        clearAutoBackupPassword(app.getPath('userData'))
+        return { set: false }
+      }
+      saveAutoBackupPassword(app.getPath('userData'), password)
+      return { set: true }
+    }),
+  )
+
+  // 口令设置状态查询：仅返回布尔（口令本体无法回读）
+  handleIpc('backup:auto-status', () => ({
+    pwdSet: loadAutoBackupPassword(app.getPath('userData')) !== null,
+  }))
 
   // ---- 账号 CRUD（锁定期间拒绝访问数据） ----
 

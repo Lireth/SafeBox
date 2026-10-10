@@ -18,6 +18,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   lockOnMinimize: false,
   skipUpdateVersion: '',
   windowMaximized: false,
+  autoBackupEnabled: false,
+  autoBackupDays: 7,
+  pwnedCheckEnabled: false,
 }
 
 /** autoLockMinutes 合法范围：0（永不空闲锁定）或 1-1440 分钟 */
@@ -27,6 +30,11 @@ const AUTO_LOCK_MAX = 24 * 60
 /** autoLockMinutes 校验：0-1440 的整数（O20） */
 function isValidAutoLockMinutes(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= AUTO_LOCK_MIN && v <= AUTO_LOCK_MAX
+}
+
+/** autoBackupDays 校验：1-365 的整数（F23） */
+function isValidAutoBackupDays(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 365
 }
 
 /** windowBounds 净化（F27）：四个字段均为有限数字且宽高为正才采纳，其余整体丢弃 */
@@ -83,6 +91,18 @@ export class SettingsStore {
         if (typeof obj.windowMaximized === 'boolean') {
           this.current.windowMaximized = obj.windowMaximized
         }
+        if (typeof obj.autoBackupEnabled === 'boolean') {
+          this.current.autoBackupEnabled = obj.autoBackupEnabled
+        }
+        if (isValidAutoBackupDays(obj.autoBackupDays)) {
+          this.current.autoBackupDays = obj.autoBackupDays
+        }
+        if (typeof obj.autoBackupDir === 'string') {
+          this.current.autoBackupDir = obj.autoBackupDir
+        }
+        if (typeof obj.pwnedCheckEnabled === 'boolean') {
+          this.current.pwnedCheckEnabled = obj.pwnedCheckEnabled
+        }
       }
     } catch {
       // 损坏的设置文件：静默回落默认值，不弹窗不打日志（非关键数据）
@@ -105,6 +125,11 @@ export class SettingsStore {
       if (bounds) next.windowBounds = bounds
     }
     if (typeof patch.windowMaximized === 'boolean') next.windowMaximized = patch.windowMaximized
+    if (typeof patch.autoBackupEnabled === 'boolean') next.autoBackupEnabled = patch.autoBackupEnabled
+    if (isValidAutoBackupDays(patch.autoBackupDays)) next.autoBackupDays = patch.autoBackupDays
+    // 仅接受非空字符串目录（空串不采纳；清空无 UI 入口——换目录即覆盖）
+    if (typeof patch.autoBackupDir === 'string' && patch.autoBackupDir) next.autoBackupDir = patch.autoBackupDir
+    if (typeof patch.pwnedCheckEnabled === 'boolean') next.pwnedCheckEnabled = patch.pwnedCheckEnabled
     this.current = next
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8')

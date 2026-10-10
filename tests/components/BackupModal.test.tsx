@@ -11,6 +11,7 @@ function setup(options: { pinEnabled?: boolean } = {}) {
     onExport: vi.fn<() => Promise<BackupExportResult>>(),
     onImport: vi.fn<() => Promise<BackupImportResult>>(),
     onImportCsv: vi.fn<() => Promise<CsvImportResult>>(),
+    onImportJson: vi.fn<() => Promise<CsvImportResult>>(),
     onExportCsv: vi.fn<(pin: string | undefined) => Promise<CsvExportResult>>(),
     pinEnabled: options.pinEnabled ?? false,
   }

@@ -13,6 +13,8 @@ interface BackupModalProps {
   onImport: (password: string) => Promise<BackupImportResult>
   /** 从第三方密码管理器导入 CSV（App 层透传 IPC，系统打开对话框） */
   onImportCsv: () => Promise<CsvImportResult>
+  /** 从 Bitwarden 未加密 JSON 导入（F22；App 层透传 IPC，系统打开对话框） */
+  onImportJson: () => Promise<CsvImportResult>
   /** 导出明文 CSV（App 层透传 IPC；已启用锁定时需携带 PIN，主进程二次身份确认） */
   onExportCsv: (pin: string | undefined) => Promise<CsvExportResult>
   /** 是否已启用锁定 PIN（决定明文导出前是否要求输入 PIN） */
@@ -22,7 +24,7 @@ interface BackupModalProps {
 const MIN_PWD = 8
 
 /** 备份与恢复弹窗：口令加密导出 / 从加密文件导入合并 / 从第三方管理器 CSV 导入 / 明文 CSV 导出（强确认） */
-export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExportCsv, pinEnabled }: BackupModalProps): React.JSX.Element {
+export function BackupModal({ onClose, onExport, onImport, onImportCsv, onImportJson, onExportCsv, pinEnabled }: BackupModalProps): React.JSX.Element {
   useLang()
   const [exportPwd, setExportPwd] = useState('')
   const [exportPwd2, setExportPwd2] = useState('')
@@ -97,6 +99,26 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
       }
     } catch (err) {
       return fail(resolveIpcError(err, t('backup.csvImportFailed')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** Bitwarden 未加密 JSON 导入（F22）：提示结构与 CSV 一致，仅文案前缀不同 */
+  async function handleImportJson(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await onImportJson()
+      if (!result.canceled) {
+        const parts = [t('backup.csvImportAdded', { n: result.imported }), t('backup.csvImportSkipped', { n: result.skipped })]
+        if (result.invalid) parts.push(t('backup.csvImportInvalid', { n: result.invalid }))
+        setNotice(t('backup.jsonImportDone', { parts: parts.join('，'), total: result.total }))
+      }
+    } catch (err) {
+      return fail(resolveIpcError(err, t('backup.jsonImportFailed')))
     } finally {
       setBusy(false)
     }
@@ -186,6 +208,18 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
         <p className="backup-hint">{t('backup.csvImportHint')}</p>
         <button type="button" className="btn btn-ghost btn-block" disabled={busy} onClick={() => void handleImportCsv()}>
           {t('backup.csvImportBtn')}
+        </button>
+      </div>
+
+      <div className="backup-divider" />
+
+      <div className="backup-section">
+        <span className="field-label">
+          <Icon name="upload" size={13} /> {t('backup.jsonImportLabel')}
+        </span>
+        <p className="backup-hint">{t('backup.jsonImportHint')}</p>
+        <button type="button" className="btn btn-ghost btn-block" disabled={busy} onClick={() => void handleImportJson()}>
+          {t('backup.jsonImportBtn')}
         </button>
       </div>
 

@@ -109,6 +109,20 @@ export interface AppSettings {
   windowBounds?: WindowBounds
   /** 窗口是否处于最大化状态（F27，与 windowBounds 配套） */
   windowMaximized: boolean
+  /** 定时自动备份（F23）：开启后每 N 天静默导出口令加密备份到指定目录 */
+  autoBackupEnabled: boolean
+  /** 自动备份间隔天数（1-365，默认 7） */
+  autoBackupDays: number
+  /**
+   * 自动备份目标目录（F23）；只能经主进程目录对话框设置（settings:update 剥离该字段，
+   * 防渲染端注入任意写入路径），空表示未选择。
+   */
+  autoBackupDir?: string
+  /**
+   * 泄露密码检查（F21）：opt-in 默认关闭。开启后安全体检除本地三维外，
+   * 另经 Have I Been Pwned 做 k-匿名查询（仅上传密码 SHA-1 前 5 位）。
+   */
+  pwnedCheckEnabled: boolean
 }
 
 /** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */
@@ -204,6 +218,10 @@ export type SafeBoxErrorCode =
   | 'BACKUP_VERSION_NEW'
   | 'BACKUP_CONTENT_INVALID'
   | 'BACKUP_DECRYPT_FAIL'
+  // Bitwarden JSON 导入（F22）
+  | 'BW_FORMAT'
+  | 'BW_ENCRYPTED'
+  | 'BW_NO_ITEMS'
 
 /** 跨 IPC 错误信封（preload 侧仍为 Error.message 字符串，渲染端解析） */
 export interface SafeBoxErrorPayload {
@@ -257,6 +275,8 @@ export interface SafeBoxAPI {
   importEncryptedBackup(password: string): Promise<BackupImportResult>
   /** 从第三方密码管理器导出的 CSV 文件导入（弹出系统打开对话框，按名称+用户名去重） */
   importCsv(): Promise<CsvImportResult>
+  /** 从 Bitwarden 未加密 JSON 导出导入（F22；弹出系统打开对话框，按名称+用户名去重） */
+  importBitwardenJson(): Promise<CsvImportResult>
   /** 导出明文 CSV（数据可携带性；渲染端已强确认，主进程校验 PIN 后弹出保存对话框） */
   exportCsv(pin: string | undefined): Promise<CsvExportResult>
   /** 订阅更新就绪事件（新版本已下载），返回取消订阅函数 */
@@ -286,6 +306,12 @@ export interface SafeBoxAPI {
   exportDiagnostics(): Promise<DiagnosticsExportResult>
   /** 手动检查更新（F25）：同步返回检查结论，发现新版本时后台继续下载，就绪后经横幅通知 */
   checkForUpdate(): Promise<UpdateCheckResult>
+  /** 选择自动备份目录（F23）：主进程对话框选定后直接落盘；取消返回 canceled */
+  selectAutoBackupDir(): Promise<{ canceled: boolean; dir?: string }>
+  /** 设置自动备份口令（F23；经 safeStorage 加密存储，无法回读明文） */
+  setAutoBackupPassword(password: string): Promise<{ set: boolean }>
+  /** 查询自动备份口令是否已设置（F23；不回传口令本身） */
+  getAutoBackupStatus(): Promise<{ pwdSet: boolean }>
   /**
    * 上报渲染端未捕获异常（O32）：由渲染端入口的 error/unhandledrejection 监听调用，
    * 主进程经 logger 统一脱敏后进入诊断日志。消息与堆栈在渲染端已截断。

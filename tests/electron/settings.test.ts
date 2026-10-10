@@ -26,6 +26,9 @@ describe('SettingsStore', () => {
       lockOnMinimize: false,
       skipUpdateVersion: '',
       windowMaximized: false,
+      autoBackupEnabled: false,
+      autoBackupDays: 7,
+      pwnedCheckEnabled: false,
     })
   })
 
@@ -44,6 +47,9 @@ describe('SettingsStore', () => {
       lockOnMinimize: false,
       skipUpdateVersion: '',
       windowMaximized: false,
+      autoBackupEnabled: false,
+      autoBackupDays: 7,
+      pwnedCheckEnabled: false,
     })
   })
 
@@ -59,6 +65,9 @@ describe('SettingsStore', () => {
       lockOnMinimize: false,
       skipUpdateVersion: '',
       windowMaximized: false,
+      autoBackupEnabled: false,
+      autoBackupDays: 7,
+      pwnedCheckEnabled: false,
     })
     const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, 'settings.json'), 'utf-8'))
     expect(raw).toEqual({
@@ -69,6 +78,9 @@ describe('SettingsStore', () => {
       lockOnMinimize: false,
       skipUpdateVersion: '',
       windowMaximized: false,
+      autoBackupEnabled: false,
+      autoBackupDays: 7,
+      pwnedCheckEnabled: false,
     })
   })
 
