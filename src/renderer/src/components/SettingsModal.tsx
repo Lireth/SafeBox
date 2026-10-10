@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
+import { resolveLang, setLang, t, useLang } from '../lib/i18n'
 import type { AppSettings } from '../../../../shared/types'
 
 interface SettingsModalProps {
   onClose: () => void
 }
 
-/** 应用设置弹窗：目前仅「关闭主窗口时最小化到托盘」开关（issue #25） */
+/** 应用设置弹窗：「关闭主窗口时最小化到托盘」开关 + 界面语言选择（issue #25 / #33） */
 export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
+  useLang()
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -20,31 +22,36 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
         if (!cancelled) setSettings(s)
       })
       .catch(() => {
-        if (!cancelled) setError('读取设置失败')
+        if (!cancelled) setError(t('settings.readFailed'))
       })
     return () => {
       cancelled = true
     }
   }, [])
 
-  async function handleToggleMinimizeToTray(value: boolean): Promise<void> {
-    if (!settings || busy) return
+  async function persist(patch: Partial<AppSettings>): Promise<void> {
+    if (busy) return
     setBusy(true)
     setError('')
     try {
-      const next = await window.safebox.updateSettings({ minimizeToTray: value })
+      const next = await window.safebox.updateSettings(patch)
       setSettings(next)
+      // 语言变更即时生效：auto 需结合系统 locale 解析
+      if (patch.language !== undefined) {
+        const locale = await window.safebox.getLocale()
+        setLang(resolveLang(next.language, locale))
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存设置失败')
+      setError(err instanceof Error ? err.message : t('settings.saveFailed'))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Modal title="设置" onClose={onClose}>
+    <Modal title={t('settings.title')} onClose={onClose}>
       {!settings ? (
-        <p className="gen-hint">{error || '加载中…'}</p>
+        <p className="gen-hint">{error || t('common.loading')}</p>
       ) : (
         <>
           <label className="checkbox settings-row">
@@ -52,14 +59,27 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
               type="checkbox"
               checked={settings.minimizeToTray}
               disabled={busy}
-              onChange={(e) => void handleToggleMinimizeToTray(e.target.checked)}
+              onChange={(e) => void persist({ minimizeToTray: e.target.checked })}
             />
-            <span>关闭主窗口时最小化到系统托盘</span>
+            <span>{t('settings.minimizeToTray')}</span>
           </label>
-          <p className="gen-hint">
-            开启后点击窗口 × 不会退出应用，SafeBox 常驻托盘，可通过托盘菜单或单击托盘图标随时唤回。全局锁定快捷键
-            Ctrl+Alt+L 在任意界面均可生效。
-          </p>
+          <p className="gen-hint">{t('settings.minimizeHint')}</p>
+
+          <label className="field-label" htmlFor="settings-language">
+            {t('settings.languageLabel')}
+          </label>
+          <select
+            id="settings-language"
+            className="input"
+            value={settings.language}
+            disabled={busy}
+            onChange={(e) => void persist({ language: e.target.value as AppSettings['language'] })}
+          >
+            <option value="auto">{t('settings.langAuto')}</option>
+            <option value="zh">{t('settings.langZh')}</option>
+            <option value="en">{t('settings.langEn')}</option>
+          </select>
+
           {error && <p className="form-error">{error}</p>}
         </>
       )}
@@ -67,7 +87,7 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
       <div className="modal-actions">
         <div className="modal-actions-right">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            完成
+            {t('settings.done')}
           </button>
         </div>
       </div>

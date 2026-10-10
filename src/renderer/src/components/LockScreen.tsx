@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
+import { t, useLang } from '../lib/i18n'
 
 interface LockScreenProps {
   /** 校验 PIN 并解锁（由 App 层透传 window.safebox.unlockApp） */
@@ -8,6 +9,7 @@ interface LockScreenProps {
 
 /** 全屏锁定遮罩：锁定态下覆盖整个应用，输入 PIN 解锁 */
 export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
+  useLang()
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -54,23 +56,23 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
         <div className="lock-icon">
           <Icon name="lock" size={26} strokeWidth={1.8} />
         </div>
-        <h2 className="lock-title">秘匣已锁定</h2>
-        <p className="lock-subtitle">输入锁定 PIN 以继续访问您的账号</p>
+        <h2 className="lock-title">{t('lockScreen.title')}</h2>
+        <p className="lock-subtitle">{t('lockScreen.desc')}</p>
         <input
           ref={inputRef}
           className="input lock-input"
           type="password"
           inputMode="text"
           autoComplete="off"
-          placeholder="锁定 PIN"
+          placeholder={t('lockScreen.pinPlaceholder')}
           value={pin}
           disabled={busy}
           onChange={(e) => setPin(e.target.value)}
         />
         {error && <p className="form-error lock-error">{error}</p>}
-        {failCount >= 2 && !error && <p className="lock-subtitle lock-fails">已连续失败 {failCount} 次</p>}
+        {failCount >= 2 && !error && <p className="lock-subtitle lock-fails">{t('lockScreen.failCount', { count: failCount })}</p>}
         <button type="submit" className="btn btn-primary btn-block" disabled={!pin || busy || cooldown > 0}>
-          {cooldown > 0 ? `请 ${cooldown} 秒后重试` : busy ? '验证中…' : '解锁'}
+          {cooldown > 0 ? t('lockScreen.cooldown', { seconds: cooldown }) : busy ? t('lockScreen.verifying') : t('lockScreen.unlock')}
         </button>
       </form>
     </div>

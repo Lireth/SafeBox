@@ -1,4 +1,5 @@
 /** 密码生成与强度评估（渲染端本地完成，不经过网络） */
+import { t } from './i18n'
 
 export interface GeneratorOptions {
   length: number
@@ -73,13 +74,14 @@ export interface PasswordStrength {
 
 /** 简单启发式强度评估：长度 + 字符种类 */
 export function passwordStrength(password: string): PasswordStrength {
-  if (!password) return { score: 0, label: '未设置' }
+  if (!password) return { score: 0, label: t('strength.notSet') }
   let score = 0
   if (password.length >= 8) score++
   if (password.length >= 12) score++
   const variety = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((re) => re.test(password)).length
   if (variety >= 2) score++
   if (variety >= 3 && password.length >= 10) score++
-  const labels = ['很弱', '较弱', '一般', '较强', '很强']
-  return { score: Math.min(score, 4) as PasswordStrength['score'], label: labels[Math.min(score, 4)] }
+  const capped = Math.min(score, 4) as PasswordStrength['score']
+  const keys = ['veryWeak', 'weak', 'fair', 'strong', 'veryStrong'] as const
+  return { score: capped, label: t(`strength.${keys[capped]}`) }
 }

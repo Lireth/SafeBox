@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
+import { t, useLang } from '../lib/i18n'
 import type { BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult } from '../../../../shared/types'
 
 interface BackupModalProps {
@@ -21,6 +22,7 @@ const MIN_PWD = 8
 
 /** 备份与恢复弹窗：口令加密导出 / 从加密文件导入合并 / 从第三方管理器 CSV 导入 / 明文 CSV 导出（强确认） */
 export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExportCsv, pinEnabled }: BackupModalProps): React.JSX.Element {
+  useLang()
   const [exportPwd, setExportPwd] = useState('')
   const [exportPwd2, setExportPwd2] = useState('')
   const [importPwd, setImportPwd] = useState('')
@@ -41,20 +43,20 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
   async function handleExport(e: React.FormEvent): Promise<void> {
     e.preventDefault()
     if (busy) return
-    if (exportPwd.length < MIN_PWD) return fail(`导出口令长度至少 ${MIN_PWD} 个字符`)
-    if (exportPwd !== exportPwd2) return fail('两次输入的导出口令不一致')
+    if (exportPwd.length < MIN_PWD) return fail(t('backup.exportPwdTooShort', { min: MIN_PWD }))
+    if (exportPwd !== exportPwd2) return fail(t('backup.exportPwdMismatch'))
     setBusy(true)
     setError('')
     setNotice('')
     try {
       const result = await onExport(exportPwd)
       if (!result.canceled) {
-        setNotice(`已导出 ${result.count} 条账号，加密文件已保存到所选位置`)
+        setNotice(t('backup.exportDone', { count: result.count }))
         setExportPwd('')
         setExportPwd2('')
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : '导出失败')
+      return fail(err instanceof Error ? err.message : t('backup.exportFailed'))
     } finally {
       setBusy(false)
     }
@@ -63,20 +65,18 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
   async function handleImport(e: React.FormEvent): Promise<void> {
     e.preventDefault()
     if (busy) return
-    if (!importPwd) return fail('请输入备份文件的口令')
+    if (!importPwd) return fail(t('backup.importPwdEmpty'))
     setBusy(true)
     setError('')
     setNotice('')
     try {
       const result = await onImport(importPwd)
       if (!result.canceled) {
-        setNotice(
-          `导入完成：新增 ${result.imported} 条，跳过重复 ${result.skipped} 条（文件共 ${result.total} 条）。导入前的数据已自动备份。`,
-        )
+        setNotice(t('backup.importDone', { imported: result.imported, skipped: result.skipped, total: result.total }))
         setImportPwd('')
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : '导入失败')
+      return fail(err instanceof Error ? err.message : t('backup.importFailed'))
     } finally {
       setBusy(false)
     }
@@ -90,12 +90,12 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
     try {
       const result = await onImportCsv()
       if (!result.canceled) {
-        const parts = [`新增 ${result.imported} 条`, `跳过重复 ${result.skipped} 条`]
-        if (result.invalid) parts.push(`忽略无名称行 ${result.invalid} 条`)
-        setNotice(`CSV 导入完成：${parts.join('，')}（有效行共 ${result.total} 条）。`)
+        const parts = [t('backup.csvImportAdded', { n: result.imported }), t('backup.csvImportSkipped', { n: result.skipped })]
+        if (result.invalid) parts.push(t('backup.csvImportInvalid', { n: result.invalid }))
+        setNotice(t('backup.csvImportDone', { parts: parts.join('，'), total: result.total }))
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : 'CSV 导入失败')
+      return fail(err instanceof Error ? err.message : t('backup.csvImportFailed'))
     } finally {
       setBusy(false)
     }
@@ -110,33 +110,30 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
     try {
       const result = await onExportCsv(pinEnabled ? csvPin : undefined)
       if (!result.canceled) {
-        setNotice(`已导出 ${result.count} 条账号为明文 CSV。文件未加密，请妥善保管并尽快删除。`)
+        setNotice(t('backup.csvExportDone', { count: result.count }))
         setCsvConfirm(false)
         setCsvPin('')
       }
     } catch (err) {
-      return fail(err instanceof Error ? err.message : 'CSV 导出失败')
+      return fail(err instanceof Error ? err.message : t('backup.csvExportFailed'))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Modal title="备份与恢复" onClose={onClose}>
+    <Modal title={t('backup.title')} onClose={onClose}>
       <form onSubmit={(e) => void handleExport(e)}>
         <div className="backup-section">
           <span className="field-label">
-            <Icon name="download" size={13} /> 导出加密备份
+            <Icon name="download" size={13} /> {t('backup.exportLabel')}
           </span>
-          <p className="backup-hint">
-            使用独立口令加密（scrypt 派生 +
-            AES-256-GCM），不依赖本机系统加密，可在换机或重装系统后恢复。口令遗失将无法恢复备份。
-          </p>
+          <p className="backup-hint">{t('backup.exportHint')}</p>
           <input
             className="input"
             type="password"
             autoComplete="new-password"
-            placeholder="导出口令（至少 8 个字符）"
+            placeholder={t('backup.exportPwdPlaceholder')}
             value={exportPwd}
             disabled={busy}
             onChange={(e) => setExportPwd(e.target.value)}
@@ -145,13 +142,13 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
             className="input backup-input"
             type="password"
             autoComplete="new-password"
-            placeholder="确认导出口令"
+            placeholder={t('backup.exportPwd2Placeholder')}
             value={exportPwd2}
             disabled={busy}
             onChange={(e) => setExportPwd2(e.target.value)}
           />
           <button type="submit" className="btn btn-primary btn-block" disabled={busy || !exportPwd || !exportPwd2}>
-            选择位置并导出
+            {t('backup.exportBtn')}
           </button>
         </div>
       </form>
@@ -161,22 +158,20 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
       <form onSubmit={(e) => void handleImport(e)}>
         <div className="backup-section">
           <span className="field-label">
-            <Icon name="upload" size={13} /> 从备份文件导入
+            <Icon name="upload" size={13} /> {t('backup.importLabel')}
           </span>
-          <p className="backup-hint">
-            仅新增备份文件中不存在的账号，已有条目不会被覆盖。导入前当前数据会自动创建一份完整备份。
-          </p>
+          <p className="backup-hint">{t('backup.importHint')}</p>
           <input
             className="input"
             type="password"
             autoComplete="off"
-            placeholder="备份文件的口令"
+            placeholder={t('backup.importPwdPlaceholder')}
             value={importPwd}
             disabled={busy}
             onChange={(e) => setImportPwd(e.target.value)}
           />
           <button type="submit" className="btn btn-primary btn-block" disabled={busy || !importPwd}>
-            选择文件并导入
+            {t('backup.importBtn')}
           </button>
         </div>
       </form>
@@ -185,13 +180,11 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
 
       <div className="backup-section">
         <span className="field-label">
-          <Icon name="upload" size={13} /> 从其他密码管理器导入（CSV）
+          <Icon name="upload" size={13} /> {t('backup.csvImportLabel')}
         </span>
-        <p className="backup-hint">
-          支持 Chrome、Bitwarden、1Password 等导出的 CSV 文件，仅新增不存在的账号（按名称+用户名去重），导入前当前数据会自动创建一份完整备份。
-        </p>
+        <p className="backup-hint">{t('backup.csvImportHint')}</p>
         <button type="button" className="btn btn-ghost btn-block" disabled={busy} onClick={() => void handleImportCsv()}>
-          选择 CSV 文件并导入
+          {t('backup.csvImportBtn')}
         </button>
       </div>
 
@@ -199,13 +192,11 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
 
       <div className="backup-section">
         <span className="field-label">
-          <Icon name="download" size={13} /> 导出明文 CSV（迁移到其他管理器）
+          <Icon name="download" size={13} /> {t('backup.csvExportLabel')}
         </span>
         {!csvConfirm ? (
           <>
-            <p className="backup-hint">
-              以未加密的标准 CSV（name,url,username,password,notes,totp）导出全部账号，便于迁移到浏览器或其他密码管理器。
-            </p>
+            <p className="backup-hint">{t('backup.csvExportHint')}</p>
             <button
               type="button"
               className="btn btn-ghost btn-danger-ghost btn-block"
@@ -215,7 +206,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
                 setError('')
               }}
             >
-              导出明文 CSV…
+              {t('backup.csvExportBtn')}
             </button>
           </>
         ) : (
@@ -223,21 +214,21 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
             <p className="csv-confirm-warning">
               <Icon name="alert-triangle" size={14} className="csv-confirm-icon" />
               <span>
-                <strong>风险确认：</strong>
-                明文 CSV 中的密码<strong>未加密</strong>，任何拿到该文件的人都能直接读取全部账号。仅在迁移数据时使用，导出后请妥善保管，并尽快从下载目录等位置删除。
+                <strong>{t('backup.csvConfirmStrong')}</strong>
+                {t('backup.csvConfirmBody')}
               </span>
             </p>
             {pinEnabled && (
               <>
                 <label className="field-label" htmlFor="csv-export-pin">
-                  输入锁定 PIN 以确认身份 <span className="required">*</span>
+                  {t('backup.csvPinLabel')} <span className="required">*</span>
                 </label>
                 <input
                   id="csv-export-pin"
                   className="input"
                   type="password"
                   autoComplete="off"
-                  placeholder="锁定 PIN"
+                  placeholder={t('backup.csvPinPlaceholder')}
                   value={csvPin}
                   disabled={busy}
                   onChange={(e) => setCsvPin(e.target.value)}
@@ -246,7 +237,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
             )}
             <div className="csv-confirm-actions">
               <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setCsvConfirm(false)}>
-                取消
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -254,7 +245,7 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExport
                 disabled={busy || (pinEnabled && !csvPin)}
                 onClick={() => void handleExportCsv()}
               >
-                我已了解风险，继续导出
+                {t('backup.csvConfirmBtn')}
               </button>
             </div>
           </div>

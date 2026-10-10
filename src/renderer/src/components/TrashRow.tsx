@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
+import { t, useLang } from '../lib/i18n'
 import type { AccountEntry } from '../../../../shared/types'
 
 /** 回收站保留时长（与主进程 vault.ts 的 TRASH_RETENTION_MS 保持一致） */
@@ -21,6 +22,7 @@ function remainingDays(deletedAt: number, now: number): number {
 
 /** 回收站条目行：不可打开详情，仅提供恢复与彻底删除操作 */
 export function TrashRow({ entry, isActive = false, onRestore, onPurge }: TrashRowProps): React.JSX.Element {
+  useLang()
   // 挂载时刻的时间快照：剩余天数随时间流逝而减少，但行内展示取挂载时值即可
   const [now] = useState(() => Date.now())
   const category = getCategory(entry.category)
@@ -40,17 +42,17 @@ export function TrashRow({ entry, isActive = false, onRestore, onPurge }: TrashR
             {category.label}
           </span>
         </div>
-        <div className="entry-sub">已删除 · {remainingDays(entry.deletedAt ?? now, now)} 天后自动清除</div>
+        <div className="entry-sub">{t('trashRow.daysLeft', { days: remainingDays(entry.deletedAt ?? now, now) })}</div>
       </div>
 
       <div className="entry-actions trash-row-actions">
-        <button type="button" className="icon-btn" title="恢复" onClick={() => onRestore(entry)}>
+        <button type="button" className="icon-btn" title={t('trashRow.restore')} onClick={() => onRestore(entry)}>
           <Icon name="refresh" size={15} />
         </button>
         <button
           type="button"
           className="icon-btn trash-row-purge"
-          title="彻底删除"
+          title={t('trashRow.purge')}
           onClick={() => onPurge(entry)}
         >
           <Icon name="trash" size={15} />

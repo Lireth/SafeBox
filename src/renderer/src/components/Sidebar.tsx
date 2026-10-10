@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Icon } from './Icon'
 import { CATEGORIES, type FilterId } from '../lib/categories'
+import { t, useLang } from '../lib/i18n'
 import type { AccountEntry } from '../../../../shared/types'
 
 interface SidebarProps {
@@ -41,6 +42,7 @@ export function Sidebar({
   onAudit,
   onSettings,
 }: SidebarProps): React.JSX.Element {
+  useLang()
   const [showClear, setShowClear] = useState(false)
 
   const counts = useMemo(() => {
@@ -77,8 +79,8 @@ export function Sidebar({
           <Icon name="shield" size={20} strokeWidth={2} />
         </div>
         <div className="brand-text">
-          <span className="brand-name">秘匣</span>
-          <span className="brand-tag">账号密码保险箱</span>
+          <span className="brand-name">{t('brand.name')}</span>
+          <span className="brand-tag">{t('brand.tag')}</span>
         </div>
       </div>
 
@@ -88,22 +90,22 @@ export function Sidebar({
           id="search-input"
           type="text"
           className="search-input"
-          placeholder="搜索名称、用户名、网址…"
+          placeholder={t('sidebar.searchPlaceholder')}
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
         />
         {showClear && (
-          <button type="button" className="search-clear" aria-label="清空搜索" onClick={() => handleSearch('')}>
+          <button type="button" className="search-clear" aria-label={t('sidebar.clearSearch')} onClick={() => handleSearch('')}>
             <Icon name="x" size={13} />
           </button>
         )}
       </div>
 
       <nav className="nav">
-        {renderItem('all', '全部账号', <Icon name="grid" size={16} />, counts.all)}
-        {renderItem('favorite', '收藏', <Icon name="star" size={16} filled />, counts.favorite)}
-        {renderItem('trash', '回收站', <Icon name="trash" size={16} />, trashCount)}
-        <div className="nav-divider">分类</div>
+        {renderItem('all', t('sidebar.allAccounts'), <Icon name="grid" size={16} />, counts.all)}
+        {renderItem('favorite', t('sidebar.favorites'), <Icon name="star" size={16} filled />, counts.favorite)}
+        {renderItem('trash', t('sidebar.trash'), <Icon name="trash" size={16} />, trashCount)}
+        <div className="nav-divider">{t('sidebar.categoryDivider')}</div>
         {CATEGORIES.map((cat) =>
           renderItem(
             cat.id,
@@ -117,30 +119,30 @@ export function Sidebar({
       <div className="sidebar-footer">
         <button type="button" className="btn btn-ghost btn-block" onClick={onAdd}>
           <Icon name="plus" size={16} />
-          添加账号
+          {t('sidebar.addAccount')}
         </button>
         {pinEnabled ? (
           <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onLock} title="Ctrl+L">
             <Icon name="lock" size={15} />
-            立即锁定
+            {t('sidebar.lockNow')}
           </button>
         ) : (
           <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onSetupPin}>
             <Icon name="key" size={15} />
-            设置锁定
+            {t('sidebar.setupLock')}
           </button>
         )}
         <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onBackup}>
           <Icon name="archive" size={15} />
-          备份与恢复
+          {t('sidebar.backup')}
         </button>
         <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onAudit}>
           <Icon name="shield" size={15} />
-          安全体检
+          {t('sidebar.audit')}
         </button>
         <button type="button" className="btn btn-ghost btn-block lock-btn" onClick={onSettings}>
           <Icon name="settings" size={15} />
-          设置
+          {t('sidebar.settings')}
         </button>
       </div>
     </aside>

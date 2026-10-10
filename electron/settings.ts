@@ -12,6 +12,7 @@ import type { AppSettings } from '../shared/types'
 /** 设置默认值（新增开关时在此登记） */
 export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTray: false,
+  language: 'auto',
 }
 
 export class SettingsStore {
@@ -38,6 +39,9 @@ export class SettingsStore {
         if (typeof obj.minimizeToTray === 'boolean') {
           this.current.minimizeToTray = obj.minimizeToTray
         }
+        if (obj.language === 'auto' || obj.language === 'zh' || obj.language === 'en') {
+          this.current.language = obj.language
+        }
       }
     } catch {
       // 损坏的设置文件：静默回落默认值，不弹窗不打日志（非关键数据）
@@ -49,6 +53,7 @@ export class SettingsStore {
   update(patch: Partial<AppSettings>): AppSettings {
     const next: AppSettings = { ...this.current }
     if (typeof patch.minimizeToTray === 'boolean') next.minimizeToTray = patch.minimizeToTray
+    if (patch.language === 'auto' || patch.language === 'zh' || patch.language === 'en') next.language = patch.language
     this.current = next
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8')

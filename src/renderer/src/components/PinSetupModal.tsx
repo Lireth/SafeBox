@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
+import { t, useLang } from '../lib/i18n'
 
 interface PinSetupModalProps {
   /** 当前是否已设置 PIN（决定是否需要旧 PIN 与是否提供清除入口） */
@@ -12,8 +13,12 @@ interface PinSetupModalProps {
   onClear: (oldPin: string) => Promise<void>
 }
 
+const PIN_MIN = 4
+const PIN_MAX = 32
+
 /** 设置 / 修改 / 清除锁定 PIN 的弹窗 */
 export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetupModalProps): React.JSX.Element {
+  useLang()
   const [oldPin, setOldPin] = useState('')
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
@@ -26,11 +31,11 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
   }, [pinEnabled])
 
   function validate(): string | null {
-    if (pinEnabled && !oldPin) return '请输入当前 PIN'
+    if (pinEnabled && !oldPin) return t('pinSetup.needOldPin')
     const pin = newPin.trim()
-    if (pin.length < 4 || pin.length > 32) return 'PIN 长度需为 4-32 个字符'
-    if (pin !== confirmPin) return '两次输入的 PIN 不一致'
-    if (pinEnabled && pin === oldPin.trim()) return '新 PIN 不能与当前 PIN 相同'
+    if (pin.length < PIN_MIN || pin.length > PIN_MAX) return t('pinSetup.pinLengthErr', { min: PIN_MIN, max: PIN_MAX })
+    if (pin !== confirmPin) return t('pinSetup.pinMismatch')
+    if (pinEnabled && pin === oldPin.trim()) return t('pinSetup.pinSame')
     return null
   }
 
@@ -48,7 +53,7 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
       await onSetup(pinEnabled ? oldPin.trim() : undefined, newPin.trim())
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '设置失败')
+      setError(err instanceof Error ? err.message : t('pinSetup.setupFailed'))
       setBusy(false)
     }
   }
@@ -61,18 +66,18 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
       await onClear(oldPin.trim())
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '清除失败')
+      setError(err instanceof Error ? err.message : t('pinSetup.clearFailed'))
       setBusy(false)
     }
   }
 
   return (
-    <Modal title={pinEnabled ? '修改锁定 PIN' : '设置锁定 PIN'} onClose={onClose}>
+    <Modal title={pinEnabled ? t('pinSetup.titleEdit') : t('pinSetup.titleSet')} onClose={onClose}>
       <form onSubmit={(e) => void handleSetup(e)}>
         {pinEnabled && (
           <>
             <label className="field-label" htmlFor="pin-old">
-              当前 PIN <span className="required">*</span>
+              {t('pinSetup.currentPinLabel')} <span className="required">*</span>
             </label>
             <input
               ref={oldRef}
@@ -80,7 +85,7 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
               className="input"
               type="password"
               autoComplete="off"
-              placeholder="输入当前 PIN"
+              placeholder={t('pinSetup.currentPinPlaceholder')}
               value={oldPin}
               onChange={(e) => setOldPin(e.target.value)}
             />
@@ -88,34 +93,32 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
         )}
 
         <label className="field-label" htmlFor="pin-new">
-          {pinEnabled ? '新 PIN' : 'PIN'} <span className="required">*</span>
+          {pinEnabled ? t('pinSetup.newPinLabel') : t('pinSetup.pinLabel')} <span className="required">*</span>
         </label>
         <input
           id="pin-new"
           className="input"
           type="password"
           autoComplete="new-password"
-          placeholder="4-32 个字符"
+          placeholder={t('pinSetup.newPinPlaceholder')}
           value={newPin}
           onChange={(e) => setNewPin(e.target.value)}
         />
 
         <label className="field-label" htmlFor="pin-confirm">
-          确认新 PIN <span className="required">*</span>
+          {t('pinSetup.confirmLabel')} <span className="required">*</span>
         </label>
         <input
           id="pin-confirm"
           className="input"
           type="password"
           autoComplete="new-password"
-          placeholder="再次输入 PIN"
+          placeholder={t('pinSetup.confirmPlaceholder')}
           value={confirmPin}
           onChange={(e) => setConfirmPin(e.target.value)}
         />
 
-        <p className="gen-hint">
-          启用后应用启动即锁定，系统空闲 5 分钟或按 Ctrl+L 也会锁定。PIN 以系统加密的摘要形式保存，请牢记，无法找回。
-        </p>
+        <p className="gen-hint">{t('pinSetup.hint')}</p>
 
         {error && <p className="form-error">{error}</p>}
 
@@ -128,15 +131,15 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
               onClick={() => void handleClear()}
             >
               <Icon name="trash" size={14} />
-              清除锁定
+              {t('pinSetup.clearLock')}
             </button>
           )}
           <div className="modal-actions-right">
             <button type="button" className="btn btn-ghost" onClick={onClose}>
-              取消
+              {t('common.cancel')}
             </button>
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {pinEnabled ? '修改 PIN' : '启用锁定'}
+              {pinEnabled ? t('pinSetup.submitEdit') : t('pinSetup.submitSet')}
             </button>
           </div>
         </div>

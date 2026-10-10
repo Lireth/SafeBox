@@ -1,5 +1,6 @@
 import { Modal } from './Modal'
 import { Icon } from './Icon'
+import { t, useLang } from '../lib/i18n'
 
 interface ConfirmModalProps {
   title: string
@@ -13,10 +14,11 @@ interface ConfirmModalProps {
 export function ConfirmModal({
   title,
   message,
-  confirmText = '删除',
+  confirmText,
   onConfirm,
   onCancel,
 }: ConfirmModalProps): React.JSX.Element {
+  useLang()
   return (
     <Modal onClose={onCancel}>
       <div className="confirm-body">
@@ -27,10 +29,10 @@ export function ConfirmModal({
         <p className="confirm-message">{message}</p>
         <div className="modal-actions center">
           <button type="button" className="btn btn-ghost" onClick={onCancel}>
-            取消
+            {t('common.cancel')}
           </button>
           <button type="button" className="btn btn-danger" onClick={onConfirm}>
-            {confirmText}
+            {confirmText ?? t('common.delete')}
           </button>
         </div>
       </div>

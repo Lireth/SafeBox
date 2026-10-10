@@ -4,6 +4,7 @@ import { Icon } from './Icon'
 import { CATEGORIES } from '../lib/categories'
 import { generatePassword, passwordStrength } from '../lib/password'
 import { parseTOTPSecret } from '../lib/totp'
+import { t, useLang } from '../lib/i18n'
 import type { AccountEntry, EntryDraft } from '../../../../shared/types'
 
 interface EntryFormModalProps {
@@ -27,6 +28,7 @@ const EMPTY_FORM: EntryDraft = {
 const DEFAULT_GENERATOR = { length: 16, upper: true, lower: true, digits: true, symbols: true }
 
 export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps): React.JSX.Element {
+  useLang()
   const [form, setForm] = useState<EntryDraft>(entry ?? EMPTY_FORM)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -52,7 +54,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
     patch({ password: generatePassword(genOptions) })
   }
 
-  /** TOTP 输入即时校验：空值合法（不启用），非法时展示 parseTOTPSecret 的中文错误 */
+  /** TOTP 输入即时校验：空值合法（不启用），非法时展示 parseTOTPSecret 的本地化错误 */
   function handleTotpChange(raw: string): void {
     patch({ totpSecret: raw })
     if (!raw.trim()) {
@@ -63,7 +65,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
       parseTOTPSecret(raw)
       setTotpError('')
     } catch (err) {
-      setTotpError(err instanceof Error ? err.message : 'TOTP 秘钥格式错误')
+      setTotpError(err instanceof Error ? err.message : t('form.totpFormatErr'))
     }
   }
 
@@ -75,28 +77,28 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
     try {
       await onSubmit({ ...form, title: form.title.trim() })
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失败')
+      setError(err instanceof Error ? err.message : t('form.saveFailed'))
       setBusy(false)
     }
   }
 
   return (
-    <Modal title={entry ? '编辑账号' : '添加账号'} onClose={onClose}>
+    <Modal title={entry ? t('form.titleEdit') : t('form.titleAdd')} onClose={onClose}>
       <form onSubmit={(e) => void handleSubmit(e)}>
         <label className="field-label" htmlFor="entry-title">
-          名称 <span className="required">*</span>
+          {t('form.nameLabel')} <span className="required">*</span>
         </label>
         <input
           ref={titleRef}
           id="entry-title"
           className="input"
           type="text"
-          placeholder="如：GitHub、公司邮箱"
+          placeholder={t('form.namePlaceholder')}
           value={form.title}
           onChange={(e) => patch({ title: e.target.value })}
         />
 
-        <span className="field-label">分类</span>
+        <span className="field-label">{t('form.categoryLabel')}</span>
         <div className="chip-group">
           {CATEGORIES.map((cat) => (
             <button
@@ -112,7 +114,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
         </div>
 
         <label className="field-label" htmlFor="entry-url">
-          网址
+          {t('form.urlLabel')}
         </label>
         <input
           id="entry-url"
@@ -124,20 +126,20 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
         />
 
         <label className="field-label" htmlFor="entry-username">
-          用户名 / 邮箱 / 手机号
+          {t('form.userLabel')}
         </label>
         <input
           id="entry-username"
           className="input"
           type="text"
-          placeholder="登录账号"
+          placeholder={t('form.userPlaceholder')}
           value={form.username}
           onChange={(e) => patch({ username: e.target.value })}
         />
 
         <div className="field-row">
           <label className="field-label" htmlFor="entry-password">
-            密码
+            {t('form.passwordLabel')}
           </label>
           <button
             type="button"
@@ -148,7 +150,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
             }}
           >
             <Icon name="refresh" size={13} />
-            {genOpen ? '收起生成器' : '生成密码'}
+            {genOpen ? t('form.genCollapse') : t('form.genButton')}
           </button>
         </div>
         <div className="password-input-wrap">
@@ -156,14 +158,14 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
             id="entry-password"
             className="input"
             type={showPassword ? 'text' : 'password'}
-            placeholder="输入或生成密码"
+            placeholder={t('form.passPlaceholder')}
             value={form.password}
             onChange={(e) => patch({ password: e.target.value })}
           />
           <button
             type="button"
             className="input-suffix"
-            aria-label={showPassword ? '隐藏密码' : '显示密码'}
+            aria-label={showPassword ? t('form.hidePass') : t('form.showPass')}
             onClick={() => setShowPassword((v) => !v)}
           >
             <Icon name={showPassword ? 'eye-off' : 'eye'} size={16} />
@@ -183,10 +185,10 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
         {genOpen && (
           <div className="generator">
             <div className="field-row">
-              <span className="field-label">长度：{genOptions.length}</span>
+              <span className="field-label">{t('form.genLength', { length: genOptions.length })}</span>
               <button type="button" className="text-btn" onClick={handleGenerate}>
                 <Icon name="refresh" size={13} />
-                重新生成
+                {t('form.regen')}
               </button>
             </div>
             <input
@@ -204,10 +206,10 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
             <div className="checkbox-group">
               {(
                 [
-                  ['upper', '大写字母 A-Z'],
-                  ['lower', '小写字母 a-z'],
-                  ['digits', '数字 0-9'],
-                  ['symbols', '符号 !@#'],
+                  ['upper', t('form.genUpper')],
+                  ['lower', t('form.genLower')],
+                  ['digits', t('form.genDigits')],
+                  ['symbols', t('form.genSymbols')],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="checkbox">
@@ -225,35 +227,35 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
                 </label>
               ))}
             </div>
-            <p className="gen-hint">生成结果已写入上方密码框，可点击眼睛图标查看</p>
+            <p className="gen-hint">{t('form.genHint')}</p>
           </div>
         )}
 
         <label className="field-label" htmlFor="entry-totp">
-          双因素验证（TOTP，可选）
+          {t('form.totpLabel')}
         </label>
         <input
           id="entry-totp"
           className="input mono"
           type="text"
-          placeholder="otpauth:// 链接或 Base32 秘钥"
+          placeholder={t('form.totpPlaceholder')}
           value={form.totpSecret ?? ''}
           onChange={(e) => handleTotpChange(e.target.value)}
         />
         {totpError ? (
           <p className="form-error totp-error">{totpError}</p>
         ) : (
-          <p className="gen-hint">留空表示不启用；保存后将在详情页动态显示 6 位验证码</p>
+          <p className="gen-hint">{t('form.totpHint')}</p>
         )}
 
         <label className="field-label" htmlFor="entry-notes">
-          备注
+          {t('form.notesLabel')}
         </label>
         <textarea
           id="entry-notes"
           className="input textarea"
           rows={3}
-          placeholder="安全提示问题、绑定手机等备注信息"
+          placeholder={t('form.notesPlaceholder')}
           value={form.notes}
           onChange={(e) => patch({ notes: e.target.value })}
         />
@@ -265,17 +267,17 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
             onChange={(e) => patch({ favorite: e.target.checked })}
           />
           <Icon name="star" size={14} filled />
-          收藏此账号
+          {t('form.favLabel')}
         </label>
 
         {error && <p className="form-error">{error}</p>}
 
         <div className="modal-actions">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            取消
+            {t('common.cancel')}
           </button>
           <button type="submit" className="btn btn-primary" disabled={!canSubmit}>
-            {entry ? '保存修改' : '添加'}
+            {entry ? t('form.saveEdit') : t('form.add')}
           </button>
         </div>
       </form>

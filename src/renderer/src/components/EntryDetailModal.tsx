@@ -3,6 +3,7 @@ import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
 import { TOTP_PERIOD_SECONDS, totpCode, totpRemainingSeconds } from '../lib/totp'
+import { t, useLang } from '../lib/i18n'
 import type { AccountEntry, PasswordHistoryItem } from '../../../../shared/types'
 
 interface EntryDetailModalProps {
@@ -29,6 +30,7 @@ export function EntryDetailModal({
   onToggleFavorite,
   onCopy,
 }: EntryDetailModalProps): React.JSX.Element {
+  useLang()
   const [showPassword, setShowPassword] = useState(false)
 
   // 明文可见 15 秒后自动隐藏；每次切换为可见都重新计时，隐藏 / 卸载即清理定时器（issue #26）
@@ -62,14 +64,12 @@ export function EntryDetailModal({
               {category.label}
             </span>
           </div>
-          <p className="detail-meta">
-            添加于 {formatTime(entry.createdAt)} · 更新于 {formatTime(entry.updatedAt)}
-          </p>
+          <p className="detail-meta">{t('detail.addedOn', { created: formatTime(entry.createdAt), updated: formatTime(entry.updatedAt) })}</p>
         </div>
         <button
           type="button"
           className={`icon-btn ${entry.favorite ? 'is-fav' : ''}`}
-          title={entry.favorite ? '取消收藏' : '收藏'}
+          title={entry.favorite ? t('entryRow.unfavorite') : t('entryRow.favorite')}
           onClick={() => onToggleFavorite(entry)}
         >
           <Icon name="star" size={17} filled={entry.favorite} />
@@ -78,14 +78,14 @@ export function EntryDetailModal({
 
       <div className="detail-fields">
         <div className="detail-field">
-          <span className="detail-label">用户名</span>
-          <span className="detail-value">{entry.username || <em className="detail-empty">未设置</em>}</span>
+          <span className="detail-label">{t('detail.username')}</span>
+          <span className="detail-value">{entry.username || <em className="detail-empty">{t('common.notSet')}</em>}</span>
           {entry.username && (
             <button
               type="button"
               className="icon-btn"
-              title="复制用户名"
-              onClick={() => onCopy(entry.username, '用户名已复制')}
+              title={t('detail.copyUser')}
+              onClick={() => onCopy(entry.username, t('entryRow.userCopied'))}
             >
               <Icon name="copy" size={15} />
             </button>
@@ -93,7 +93,7 @@ export function EntryDetailModal({
         </div>
 
         <div className="detail-field">
-          <span className="detail-label">密码</span>
+          <span className="detail-label">{t('detail.password')}</span>
           <span className="detail-value mono">
             {entry.password ? (
               showPassword ? (
@@ -102,7 +102,7 @@ export function EntryDetailModal({
                 '•'.repeat(Math.min(entry.password.length, 12))
               )
             ) : (
-              <em className="detail-empty">未设置</em>
+              <em className="detail-empty">{t('common.notSet')}</em>
             )}
           </span>
           {entry.password && (
@@ -110,7 +110,7 @@ export function EntryDetailModal({
               <button
                 type="button"
                 className="icon-btn"
-                title={showPassword ? '隐藏密码' : '显示密码（15 秒后自动隐藏）'}
+                title={showPassword ? t('detail.hidePass') : t('detail.showPassHint')}
                 onClick={() => setShowPassword((v) => !v)}
               >
                 <Icon name={showPassword ? 'eye-off' : 'eye'} size={15} />
@@ -118,8 +118,8 @@ export function EntryDetailModal({
               <button
                 type="button"
                 className="icon-btn"
-                title="复制密码"
-                onClick={() => onCopy(entry.password, '密码已复制')}
+                title={t('detail.copyPass')}
+                onClick={() => onCopy(entry.password, t('entryRow.passCopied'))}
               >
                 <Icon name="copy" size={15} />
               </button>
@@ -128,13 +128,13 @@ export function EntryDetailModal({
         </div>
 
         <div className="detail-field">
-          <span className="detail-label">网址</span>
-          <span className="detail-value">{entry.url || <em className="detail-empty">未设置</em>}</span>
+          <span className="detail-label">{t('detail.url')}</span>
+          <span className="detail-value">{entry.url || <em className="detail-empty">{t('common.notSet')}</em>}</span>
           {entry.url && (
             <button
               type="button"
               className="icon-btn"
-              title="在浏览器中打开"
+              title={t('detail.openInBrowser')}
               onClick={() => void window.safebox.openExternal(entry.url)}
             >
               <Icon name="external" size={15} />
@@ -144,14 +144,14 @@ export function EntryDetailModal({
 
         {entry.notes && (
           <div className="detail-field top">
-            <span className="detail-label">备注</span>
+            <span className="detail-label">{t('detail.notes')}</span>
             <span className="detail-value prewrap">{entry.notes}</span>
           </div>
         )}
 
         {entry.totpSecret && (
           <div className="detail-field">
-            <span className="detail-label">双因素验证码</span>
+            <span className="detail-label">{t('detail.totpLabel')}</span>
             <TOTPDisplay secret={entry.totpSecret} onCopy={onCopy} />
           </div>
         )}
@@ -164,15 +164,15 @@ export function EntryDetailModal({
       <div className="modal-actions">
         <button type="button" className="btn btn-ghost btn-danger-ghost" onClick={() => onDelete(entry)}>
           <Icon name="trash" size={15} />
-          删除
+          {t('common.delete')}
         </button>
         <div className="modal-actions-right">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            关闭
+            {t('common.close')}
           </button>
           <button type="button" className="btn btn-primary" onClick={() => onEdit(entry)}>
             <Icon name="pencil" size={14} />
-            编辑
+            {t('common.edit')}
           </button>
         </div>
       </div>
@@ -188,12 +188,13 @@ function PasswordHistorySection({
   items: PasswordHistoryItem[]
   onCopy: (text: string, label: string) => void
 }): React.JSX.Element {
+  useLang()
   const [open, setOpen] = useState(false)
   return (
     <div className="history-section">
       <button type="button" className="text-btn" onClick={() => setOpen((v) => !v)}>
         <Icon name={open ? 'eye-off' : 'clock'} size={13} />
-        {open ? '收起历史密码' : `历史密码（${items.length}）`}
+        {open ? t('detail.historyCollapse') : t('detail.historyToggle', { count: items.length })}
       </button>
       {open && (
         <div className="history-list">
@@ -214,6 +215,7 @@ function HistoryRow({
   item: PasswordHistoryItem
   onCopy: (text: string, label: string) => void
 }): React.JSX.Element {
+  useLang()
   const [show, setShow] = useState(false)
   useEffect(() => {
     if (!show) return
@@ -227,12 +229,12 @@ function HistoryRow({
       <button
         type="button"
         className="icon-btn"
-        title={show ? '隐藏' : '显示 15 秒'}
+        title={show ? t('common.hide') : t('detail.show15')}
         onClick={() => setShow((v) => !v)}
       >
         <Icon name={show ? 'eye-off' : 'eye'} size={14} />
       </button>
-      <button type="button" className="icon-btn" title="复制" onClick={() => onCopy(item.password, '历史密码已复制')}>
+      <button type="button" className="icon-btn" title={t('common.copy')} onClick={() => onCopy(item.password, t('detail.historyCopied'))}>
         <Icon name="copy" size={14} />
       </button>
     </div>
@@ -247,6 +249,7 @@ function TOTPDisplay({
   secret: string
   onCopy: (text: string, label: string) => void
 }): React.JSX.Element {
+  useLang()
   // 时间快照与码值同帧更新，避免窗口边界处码值与倒计时短暂错位
   const [state, setState] = useState<{ now: number; code: string | null }>({ now: 0, code: null })
 
@@ -300,7 +303,7 @@ function TOTPDisplay({
       <span className="detail-value mono totp-code">{state.code ? `${state.code.slice(0, 3)} ${state.code.slice(3)}` : '••• •••'}</span>
       <span className="totp-remaining">{state.now ? `${remaining}s` : ''}</span>
       {state.code && (
-        <button type="button" className="icon-btn" title="复制验证码" onClick={() => onCopy(state.code as string, '验证码已复制')}>
+        <button type="button" className="icon-btn" title={t('detail.copyTotp')} onClick={() => onCopy(state.code as string, t('detail.totpCopied'))}>
           <Icon name="copy" size={15} />
         </button>
       )}

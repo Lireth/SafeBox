@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterForDigit, HOTKEY_LIST } from '../../src/renderer/src/lib/hotkeys'
+import { filterForDigit, getHotkeyList } from '../../src/renderer/src/lib/hotkeys'
 
 describe('filterForDigit 数字快捷键映射', () => {
   it('Ctrl+1..8 依次对应八个分类', () => {
@@ -19,9 +19,10 @@ describe('filterForDigit 数字快捷键映射', () => {
   })
 })
 
-describe('HOTKEY_LIST 帮助数据', () => {
+describe('getHotkeyList 帮助数据', () => {
   it('包含全部已实现的快捷键且无重复键位', () => {
-    const keys = HOTKEY_LIST.map((item) => item.keys)
+    const list = getHotkeyList()
+    const keys = list.map((item) => item.keys)
     expect(new Set(keys).size).toBe(keys.length)
     // 关键项存在
     expect(keys).toContain('Ctrl + N')
@@ -32,6 +33,6 @@ describe('HOTKEY_LIST 帮助数据', () => {
     expect(keys).toContain('Enter')
     expect(keys).toContain('Esc')
     // 每项都有说明文案
-    expect(HOTKEY_LIST.every((item) => item.desc.length > 0)).toBe(true)
+    expect(list.every((item) => item.desc.length > 0)).toBe(true)
   })
 })

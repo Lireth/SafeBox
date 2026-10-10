@@ -1,5 +1,6 @@
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
+import { t, useLang } from '../lib/i18n'
 import type { AccountEntry } from '../../../../shared/types'
 
 interface EntryRowProps {
@@ -12,7 +13,7 @@ interface EntryRowProps {
 }
 
 function maskPassword(password: string): string {
-  if (!password) return '未设置'
+  if (!password) return t('common.notSet')
   return '•'.repeat(Math.min(password.length, 12))
 }
 
@@ -23,6 +24,7 @@ export function EntryRow({
   onToggleFavorite,
   onCopy,
 }: EntryRowProps): React.JSX.Element {
+  useLang()
   const category = getCategory(entry.category)
   const initial = entry.title.charAt(0).toUpperCase() || '?'
   const avatarColor = `hsl(${category.hue} 62% 52%)`
@@ -57,8 +59,8 @@ export function EntryRow({
           <button
             type="button"
             className="icon-btn"
-            title="复制用户名"
-            onClick={() => onCopy(entry.username, '用户名已复制')}
+            title={t('entryRow.copyUser')}
+            onClick={() => onCopy(entry.username, t('entryRow.userCopied'))}
           >
             <Icon name="copy" size={15} />
           </button>
@@ -67,8 +69,8 @@ export function EntryRow({
           <button
             type="button"
             className="icon-btn"
-            title="复制密码"
-            onClick={() => onCopy(entry.password, '密码已复制')}
+            title={t('entryRow.copyPass')}
+            onClick={() => onCopy(entry.password, t('entryRow.passCopied'))}
           >
             <Icon name="key" size={15} />
           </button>
@@ -76,7 +78,7 @@ export function EntryRow({
         <button
           type="button"
           className={`icon-btn ${entry.favorite ? 'is-fav' : ''}`}
-          title={entry.favorite ? '取消收藏' : '收藏'}
+          title={entry.favorite ? t('entryRow.unfavorite') : t('entryRow.favorite')}
           onClick={() => onToggleFavorite(entry)}
         >
           <Icon name="star" size={15} filled={entry.favorite} />

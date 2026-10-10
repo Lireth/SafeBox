@@ -11,5 +11,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["tests"]
+  "include": ["tests", "src/renderer/src/env.d.ts"]
 }

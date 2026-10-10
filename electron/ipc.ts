@@ -31,6 +31,9 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
     return settings.update(p)
   })
 
+  // 系统区域设置（如 zh-CN / en-US），供渲染端「跟随系统」语言检测（issue #33）
+  ipcMain.handle('app:get-locale', () => app.getLocale())
+
   // ---- 应用锁定 ----
 
   ipcMain.handle('lock:get-state', () => ({ pinEnabled: lock.pinEnabled, locked: lock.isLocked }))

@@ -73,6 +73,8 @@ export interface LockState {
 export interface AppSettings {
   /** 关闭主窗口时最小化到系统托盘；false（默认）保持「关闭窗口即退出」 */
   minimizeToTray: boolean
+  /** 界面语言：auto 跟随系统（默认），或手动覆盖为 zh / en（issue #33） */
+  language: 'auto' | 'zh' | 'en'
 }
 
 /** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */
@@ -138,6 +140,8 @@ export interface SafeBoxAPI {
   getSettings(): Promise<AppSettings>
   /** 局部更新应用设置，返回落盘后的完整设置 */
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>
+  /** 获取系统区域设置（如 zh-CN / en-US），供渲染端「跟随系统」语言检测（issue #33） */
+  getLocale(): Promise<string>
   /** 导出加密备份（弹出系统保存对话框，口令 + AES-256-GCM） */
   exportEncryptedBackup(password: string): Promise<BackupExportResult>
   /** 导入加密备份（弹出系统打开对话框，导入前自动备份当前数据） */

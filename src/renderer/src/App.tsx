@@ -14,6 +14,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import { filterForDigit } from './lib/hotkeys'
+import { resolveLang, setLang, t, useLang } from './lib/i18n'
 import type { AccountEntry, BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
@@ -26,10 +27,8 @@ interface ToastState {
   message: string
 }
 
-interface LoadWarning {
-  title: string
-  detail: string
-}
+/** 数据文件异常来源（渲染期按当前语言生成文案，语言切换即时更新） */
+type LoadWarning = { kind: 'broken'; file: string } | { kind: 'repaired'; skipped: number }
 
 /** 错误消息提取：IPC 报错还原主进程真实信息 */
 function errorMessage(err: unknown, fallback: string): string {
@@ -37,6 +36,8 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 export default function App(): React.JSX.Element {
+  // 订阅语言：SettingsModal 切换语言后整个应用树重渲染（issue #33）
+  useLang()
   const [ready, setReady] = useState(false)
   const [entries, setEntries] = useState<AccountEntry[]>([])
   /** 非 null 表示数据文件异常（整体损坏或含坏条目），展示持久警示条 */
@@ -63,6 +64,18 @@ export default function App(): React.JSX.Element {
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
 
+  // 语言初始化：读取设置项（auto/zh/en）与系统 locale，解析有效语言（issue #33）
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [settings, locale] = await Promise.all([window.safebox.getSettings(), window.safebox.getLocale()])
+        setLang(resolveLang(settings.language, locale))
+      } catch {
+        // 读取失败保持默认 zh
+      }
+    })()
+  }, [])
+
   // 启动即加载账号数据与加载状态
   useEffect(() => {
     let cancelled = false
@@ -84,16 +97,10 @@ export default function App(): React.JSX.Element {
         if (status.status === 'broken' && status.backupFile) {
           // 生产环境留痕：数据异常必须在日志可见
           console.error(`[SafeBox] 数据文件解析失败，已自动备份为 ${status.backupFile}`)
-          setLoadWarning({
-            title: '数据文件解析失败',
-            detail: `已自动备份为 ${status.backupFile}，当前从空数据开始。请先在数据目录中处理备份文件，勿直接重新录入。`,
-          })
+          setLoadWarning({ kind: 'broken', file: status.backupFile })
         } else if (status.status === 'repaired') {
           console.error(`[SafeBox] 数据文件含 ${status.skipped ?? 0} 条损坏条目，已自动跳过`)
-          setLoadWarning({
-            title: '部分账号数据损坏',
-            detail: `已自动跳过 ${status.skipped ?? 0} 条格式损坏的账号，其余账号可正常访问。如发现有账号缺失，请检查数据目录中的历史备份。`,
-          })
+          setLoadWarning({ kind: 'repaired', skipped: status.skipped ?? 0 })
         }
       })
       .catch(() => {})
@@ -188,7 +195,14 @@ export default function App(): React.JSX.Element {
       )
   }, [activeEntries, trashEntries, filter, query])
 
-  const headerLabel = filter === 'all' ? '全部账号' : filter === 'favorite' ? '收藏' : filter === 'trash' ? '回收站' : getCategory(filter).label
+  const headerLabel =
+    filter === 'all'
+      ? t('sidebar.allAccounts')
+      : filter === 'favorite'
+        ? t('sidebar.favorites')
+        : filter === 'trash'
+          ? t('sidebar.trash')
+          : getCategory(filter).label
 
   // 全局快捷键与键盘导航（弹窗打开或锁定期间不响应）
   useEffect(() => {
@@ -292,12 +306,12 @@ export default function App(): React.JSX.Element {
       const created = await window.safebox.addEntry(draft)
       setEntries((prev) => [...prev, created])
       setFilter((f) => (f === 'all' || f === 'favorite' || f === created.category ? f : created.category))
-      showToast('账号已添加')
+      showToast(t('toast.entryAdded'))
     } else if (formTarget.entry) {
       const updated = await window.safebox.updateEntry(formTarget.entry.id, draft)
       setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
       setDetailEntry((cur) => (cur?.id === updated.id ? updated : cur))
-      showToast('修改已保存')
+      showToast(t('toast.entrySaved'))
     }
     setFormTarget(null)
   }
@@ -310,9 +324,9 @@ export default function App(): React.JSX.Element {
       setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, deletedAt: Date.now() } : e)))
       setDetailEntry((cur) => (cur?.id === id ? null : cur))
       setDeleteTarget(null)
-      showToast('已移入回收站，30 天内可恢复')
+      showToast(t('toast.movedToTrash'))
     } catch (err) {
-      showToast(errorMessage(err, '删除失败'), 'error')
+      showToast(errorMessage(err, t('toast.deleteFailed')), 'error')
     }
   }
 
@@ -321,9 +335,9 @@ export default function App(): React.JSX.Element {
     try {
       const restored = await window.safebox.restoreEntry(entry.id)
       setEntries((prev) => prev.map((e) => (e.id === restored.id ? restored : e)))
-      showToast('账号已恢复')
+      showToast(t('toast.restored'))
     } catch (err) {
-      showToast(errorMessage(err, '恢复失败'), 'error')
+      showToast(errorMessage(err, t('toast.restoreFailed')), 'error')
     }
   }
 
@@ -335,9 +349,9 @@ export default function App(): React.JSX.Element {
       await window.safebox.purgeEntry(id)
       setEntries((prev) => prev.filter((e) => e.id !== id))
       setPurgeTarget(null)
-      showToast('已彻底删除')
+      showToast(t('toast.purged'))
     } catch (err) {
-      showToast(errorMessage(err, '删除失败'), 'error')
+      showToast(errorMessage(err, t('toast.deleteFailed')), 'error')
     }
   }
 
@@ -347,7 +361,7 @@ export default function App(): React.JSX.Element {
       setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)))
       setDetailEntry((cur) => (cur?.id === updated.id ? updated : cur))
     } catch (err) {
-      showToast(errorMessage(err, '操作失败'), 'error')
+      showToast(errorMessage(err, t('toast.opFailed')), 'error')
     }
   }
 
@@ -355,27 +369,27 @@ export default function App(): React.JSX.Element {
     window.safebox
       .copyText(text)
       .then(() => showToast(message))
-      .catch((err) => showToast(errorMessage(err, '复制失败'), 'error'))
+      .catch((err) => showToast(errorMessage(err, t('toast.copyFailed')), 'error'))
   }
 
   async function handleLockNow(): Promise<void> {
     try {
       await window.safebox.lockNow()
     } catch (err) {
-      showToast(errorMessage(err, '锁定失败'), 'error')
+      showToast(errorMessage(err, t('toast.lockFailed')), 'error')
     }
   }
 
   async function handleSetupPin(oldPin: string | undefined, newPin: string): Promise<void> {
     await window.safebox.setupLockPin(oldPin, newPin)
     setPinEnabled(true)
-    showToast('锁定已启用，应用空闲或启动时将要求解锁')
+    showToast(t('toast.lockEnabledHint'))
   }
 
   async function handleClearPin(oldPin: string): Promise<void> {
     await window.safebox.clearLockPin(oldPin)
     setPinEnabled(false)
-    showToast('锁定已清除')
+    showToast(t('toast.lockCleared'))
   }
 
   async function handleExportBackup(password: string): Promise<BackupExportResult> {
@@ -433,15 +447,15 @@ export default function App(): React.JSX.Element {
         {updateVersion && !updateBannerDismissed && !locked && (
           <div className="update-banner" role="status">
             <Icon name="download" size={15} className="update-banner-icon" />
-            <span className="update-banner-text">新版本 v{updateVersion} 已就绪，将随下次启动自动安装。</span>
+            <span className="update-banner-text">{t('update.ready', { version: updateVersion })}</span>
             <button
               type="button"
               className="btn btn-ghost update-banner-action"
               onClick={() => void window.safebox.installUpdate()}
             >
-              立即重启更新
+              {t('update.installNow')}
             </button>
-            <button type="button" className="icon-btn" aria-label="关闭提示" onClick={() => setUpdateBannerDismissed(true)}>
+            <button type="button" className="icon-btn" aria-label={t('update.dismiss')} onClick={() => setUpdateBannerDismissed(true)}>
               <Icon name="x" size={14} />
             </button>
           </div>
@@ -451,17 +465,21 @@ export default function App(): React.JSX.Element {
           <div className="load-warning" role="alert">
             <Icon name="alert-triangle" size={18} className="load-warning-icon" />
             <div className="load-warning-text">
-              <strong>{loadWarning.title}</strong>
-              <span>{loadWarning.detail}</span>
+              <strong>{loadWarning.kind === 'broken' ? t('loadWarning.brokenTitle') : t('loadWarning.repairedTitle')}</strong>
+              <span>
+                {loadWarning.kind === 'broken'
+                  ? t('loadWarning.brokenDetail', { file: loadWarning.file })
+                  : t('loadWarning.repairedDetail', { skipped: loadWarning.skipped })}
+              </span>
             </div>
             <button
               type="button"
               className="btn btn-ghost load-warning-action"
               onClick={() => void window.safebox.openDataDir()}
             >
-              打开数据目录
+              {t('loadWarning.openDataDir')}
             </button>
-            <button type="button" className="icon-btn" aria-label="关闭警示" onClick={() => setLoadWarning(null)}>
+            <button type="button" className="icon-btn" aria-label={t('loadWarning.dismiss')} onClick={() => setLoadWarning(null)}>
               <Icon name="x" size={14} />
             </button>
           </div>
@@ -470,10 +488,10 @@ export default function App(): React.JSX.Element {
         <header className="main-header">
           <div className="main-heading">
             <h1 className="main-title">{headerLabel}</h1>
-            <span className="main-count">{visibleEntries.length} 个账号</span>
+            <span className="main-count">{t('header.accountCount', { count: visibleEntries.length })}</span>
           </div>
           <div className="main-heading-actions">
-            <button type="button" className="icon-btn" title="快捷键说明（Ctrl+/）" onClick={() => setHelpOpen(true)}>
+            <button type="button" className="icon-btn" title={t('header.helpTitle')} onClick={() => setHelpOpen(true)}>
               <Icon name="keyboard" size={16} />
             </button>
             <button
@@ -482,7 +500,7 @@ export default function App(): React.JSX.Element {
               onClick={() => setFormTarget({ mode: 'new', entry: null })}
             >
               <Icon name="plus" size={16} />
-              添加账号
+              {t('header.addAccount')}
             </button>
           </div>
         </header>
@@ -494,8 +512,8 @@ export default function App(): React.JSX.Element {
                 <div className="empty-icon">
                   <Icon name="trash" size={26} strokeWidth={1.5} />
                 </div>
-                <h2>回收站是空的</h2>
-                <p>删除的账号会在这里保留 30 天，期间可随时恢复</p>
+                <h2>{t('empty.trashEmptyTitle')}</h2>
+                <p>{t('empty.trashEmptyDesc')}</p>
               </div>
             ) : (
               visibleEntries.map((entry, index) => (
@@ -513,15 +531,15 @@ export default function App(): React.JSX.Element {
               <div className="empty-icon">
                 <Icon name="inbox" size={34} strokeWidth={1.5} />
               </div>
-              <h2>还没有保存任何账号</h2>
-              <p>添加您的第一个账号，数据将加密保存在本机</p>
+              <h2>{t('empty.noAccountsTitle')}</h2>
+              <p>{t('empty.noAccountsDesc')}</p>
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={() => setFormTarget({ mode: 'new', entry: null })}
               >
                 <Icon name="plus" size={16} />
-                添加账号
+                {t('header.addAccount')}
               </button>
             </div>
           ) : visibleEntries.length === 0 ? (
@@ -529,8 +547,8 @@ export default function App(): React.JSX.Element {
               <div className="empty-icon">
                 <Icon name="search" size={26} strokeWidth={1.5} />
               </div>
-              <h2>没有匹配的账号</h2>
-              <p>换个关键词或切换分类试试</p>
+              <h2>{t('empty.noMatchTitle')}</h2>
+              <p>{t('empty.noMatchDesc')}</p>
             </div>
           ) : (
             visibleEntries.map((entry, index) => (
@@ -568,8 +586,8 @@ export default function App(): React.JSX.Element {
 
       {deleteTarget && (
         <ConfirmModal
-          title="删除账号"
-          message={`确定要删除「${deleteTarget.title}」吗？删除后将移入回收站，30 天内可恢复。`}
+          title={t('confirm.deleteTitle')}
+          message={t('confirm.deleteMsg', { title: deleteTarget.title })}
           onConfirm={() => void handleConfirmDelete()}
           onCancel={() => setDeleteTarget(null)}
         />
@@ -577,8 +595,9 @@ export default function App(): React.JSX.Element {
 
       {purgeTarget && (
         <ConfirmModal
-          title="彻底删除"
-          message={`确定要彻底删除「${purgeTarget.title}」吗？彻底删除后无法恢复。`}
+          title={t('confirm.purgeTitle')}
+          message={t('confirm.purgeMsg', { title: purgeTarget.title })}
+          confirmText={t('confirm.purgeConfirm')}
           onConfirm={() => void handleConfirmPurge()}
           onCancel={() => setPurgeTarget(null)}
         />
