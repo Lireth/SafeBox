@@ -105,7 +105,8 @@ if (!app.requestSingleInstanceLock()) {
     createMainWindow()
     // 已设置 PIN 时启动即锁定，防止无人值守泄露
     lock.lock(store)
-    lock.startIdleMonitor(store)
+    // 空闲自动锁定：阈值取设置项 autoLockMinutes（0=永不），getter 动态读取使设置变更即时生效（O20）
+    lock.startIdleMonitor(store, () => settings.settings.autoLockMinutes * 60)
     // 自动更新检查（开发环境自动跳过）
     initAutoUpdater()
 

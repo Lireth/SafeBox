@@ -281,6 +281,10 @@ export const zh = {
     diagnosticsHint: '导出最近的主进程诊断日志（已脱敏，不含密码等敏感值），随反馈提交可帮助远程定位问题。',
     exportDiagnostics: '导出诊断日志',
     diagnosticsExported: '诊断日志已导出到：{path}',
+    autoLockLabel: '空闲自动锁定',
+    autoLockNever: '永不',
+    autoLockMinutes: '{n} 分钟',
+    autoLockHint: '无操作超过所选时长后自动锁定应用（需已设置锁定 PIN）。「永不」仅停用空闲锁定，系统锁屏（Win+L）时仍会立即锁定。',
   },
   hotkeys: {
     title: '快捷键',

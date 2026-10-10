@@ -96,6 +96,11 @@ export interface AppSettings {
   language: 'auto' | 'zh' | 'en'
   /** 开机自动启动（注册系统登录项）；false（默认），尊重系统启动项管控（issue #34） */
   openAtLogin: boolean
+  /**
+   * 空闲自动锁定阈值（分钟）；5（默认），0 表示不因应用空闲自动锁定（O20）。
+   * 系统锁屏（lock-screen 事件）的即时锁定不受此值影响——那是明确的离开信号。
+   */
+  autoLockMinutes: number
 }
 
 /** 加密备份导出结果（用户在系统对话框取消时 canceled=true） */

@@ -213,14 +213,21 @@ describe('LockManager', () => {
     })
   })
 
-  describe('系统空闲自动锁定（轮询兜底，间隔 30s）', () => {
+  describe('系统空闲自动锁定（轮询兜底，间隔 30s，阈值由设置注入 O20）', () => {
+    /** 空闲锁定阈值（秒）：getter 闭包引用，用例内可动态修改模拟设置变更 */
+    let idleLimit: number
+
     function startMonitor(): void {
       lock.setupPin(undefined, '123456')
       store.add({ title: 'T1', category: 'other', url: '', username: '', password: '', notes: '' })
       // 仅 fake 定时器，保持 Date.now 真实（备份文件名依赖时间戳）
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
-      lock.startIdleMonitor(store)
+      lock.startIdleMonitor(store, () => idleLimit)
     }
+
+    beforeEach(() => {
+      idleLimit = 300
+    })
 
     it('空闲超过阈值（5 分钟）自动锁定', () => {
       startMonitor()
@@ -246,6 +253,29 @@ describe('LockManager', () => {
       // 持续空闲不再触发广播/清空等副作用
       vi.advanceTimersByTime(120_000)
       expect(lock.isLocked).toBe(true)
+    })
+
+    it('阈值 getter 动态读取：设置变更无需重启监控即时生效（O20）', () => {
+      startMonitor()
+      mockState.idleSeconds = 301
+      // 空闲已超 300s 默认阈值，但用户先把阈值调大到 600 → 本轮不锁定
+      idleLimit = 600
+      vi.advanceTimersByTime(30_500)
+      expect(lock.isLocked).toBe(false)
+      // 再把阈值调小到 200 → 下一轮即锁定
+      idleLimit = 200
+      vi.advanceTimersByTime(30_500)
+      expect(lock.isLocked).toBe(true)
+      expect(store.list()).toEqual([])
+    })
+
+    it('阈值为 0（永不）时空闲再久也不锁定（O20）', () => {
+      startMonitor()
+      idleLimit = 0
+      mockState.idleSeconds = 86_400
+      vi.advanceTimersByTime(120_000)
+      expect(lock.isLocked).toBe(false)
+      expect(store.list()).toHaveLength(1)
     })
   })
 
@@ -280,7 +310,7 @@ describe('LockManager', () => {
     it('lock-screen 事件立即锁定，无需等待轮询', () => {
       lock.setupPin(undefined, '123456')
       store.add({ title: 'T1', category: 'other', url: '', username: '', password: '', notes: '' })
-      lock.startIdleMonitor(store)
+      lock.startIdleMonitor(store, () => 300)
       // 空闲远低于阈值：排除轮询路径，证明锁定来自事件
       mockState.idleSeconds = 0
       expect(lock.isLocked).toBe(false)
@@ -289,8 +319,17 @@ describe('LockManager', () => {
       expect(store.list()).toEqual([])
     })
 
+    it('autoLockMinutes=0（永不空闲锁定）不豁免 lock-screen 事件（O20：系统锁屏是明确离开信号）', () => {
+      lock.setupPin(undefined, '123456')
+      store.add({ title: 'T1', category: 'other', url: '', username: '', password: '', notes: '' })
+      lock.startIdleMonitor(store, () => 0)
+      mockState.emitPowerMonitorEvent('lock-screen')
+      expect(lock.isLocked).toBe(true)
+      expect(store.list()).toEqual([])
+    })
+
     it('监听器随 startIdleMonitor 注册、stopIdleMonitor 移除', () => {
-      lock.startIdleMonitor(store)
+      lock.startIdleMonitor(store, () => 300)
       expect(mockState.powerMonitorListeners.get('lock-screen')?.size).toBe(1)
       lock.stopIdleMonitor()
       expect(mockState.powerMonitorListeners.get('lock-screen')?.size).toBe(0)
@@ -301,14 +340,14 @@ describe('LockManager', () => {
     })
 
     it('未设置 PIN 时事件触发不锁定（lock 幂等短路）', () => {
-      lock.startIdleMonitor(store)
+      lock.startIdleMonitor(store, () => 300)
       mockState.emitPowerMonitorEvent('lock-screen')
       expect(lock.isLocked).toBe(false)
     })
 
     it('重复 startIdleMonitor 不叠加监听器', () => {
-      lock.startIdleMonitor(store)
-      lock.startIdleMonitor(store)
+      lock.startIdleMonitor(store, () => 300)
+      lock.startIdleMonitor(store, () => 300)
       expect(mockState.powerMonitorListeners.get('lock-screen')?.size).toBe(1)
     })
   })

@@ -281,6 +281,10 @@ export const en = {
     diagnosticsHint: 'Export recent main-process diagnostics (redacted — never contains passwords or other secrets) and attach them to a bug report.',
     exportDiagnostics: 'Export diagnostics log',
     diagnosticsExported: 'Diagnostics log exported to: {path}',
+    autoLockLabel: 'Auto-lock on idle',
+    autoLockNever: 'Never',
+    autoLockMinutes: '{n} min',
+    autoLockHint: 'Lock the app automatically after the selected idle time (requires a lock PIN). “Never” only disables idle locking — the app still locks instantly when the system locks (Win+L).',
   },
   hotkeys: {
     title: 'Shortcuts',

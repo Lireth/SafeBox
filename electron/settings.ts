@@ -14,6 +14,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTray: false,
   language: 'auto',
   openAtLogin: false,
+  autoLockMinutes: 5,
+}
+
+/** autoLockMinutes 合法范围：0（永不空闲锁定）或 1-1440 分钟 */
+const AUTO_LOCK_MIN = 0
+const AUTO_LOCK_MAX = 24 * 60
+
+/** autoLockMinutes 校验：0-1440 的整数（O20） */
+function isValidAutoLockMinutes(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= AUTO_LOCK_MIN && v <= AUTO_LOCK_MAX
 }
 
 export class SettingsStore {
@@ -46,6 +56,9 @@ export class SettingsStore {
         if (typeof obj.openAtLogin === 'boolean') {
           this.current.openAtLogin = obj.openAtLogin
         }
+        if (isValidAutoLockMinutes(obj.autoLockMinutes)) {
+          this.current.autoLockMinutes = obj.autoLockMinutes
+        }
       }
     } catch {
       // 损坏的设置文件：静默回落默认值，不弹窗不打日志（非关键数据）
@@ -59,6 +72,7 @@ export class SettingsStore {
     if (typeof patch.minimizeToTray === 'boolean') next.minimizeToTray = patch.minimizeToTray
     if (patch.language === 'auto' || patch.language === 'zh' || patch.language === 'en') next.language = patch.language
     if (typeof patch.openAtLogin === 'boolean') next.openAtLogin = patch.openAtLogin
+    if (isValidAutoLockMinutes(patch.autoLockMinutes)) next.autoLockMinutes = patch.autoLockMinutes
     this.current = next
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8')

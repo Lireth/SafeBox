@@ -7,7 +7,7 @@ interface SettingsModalProps {
   onClose: () => void
 }
 
-/** 应用设置弹窗：「关闭主窗口时最小化到托盘」开关 + 界面语言选择（issue #25 / #33） */
+/** 应用设置弹窗：托盘开关 / 开机自启 / 界面语言 / 空闲自动锁定 / 诊断日志导出（issue #25 / #33 / #34 / O20） */
 export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
   useLang()
   const [settings, setSettings] = useState<AppSettings | null>(null)
@@ -111,6 +111,25 @@ export function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Elemen
             <option value="zh">{t('settings.langZh')}</option>
             <option value="en">{t('settings.langEn')}</option>
           </select>
+
+          <label className="field-label" htmlFor="settings-autolock">
+            {t('settings.autoLockLabel')}
+          </label>
+          <select
+            id="settings-autolock"
+            className="input"
+            value={settings.autoLockMinutes}
+            disabled={busy}
+            onChange={(e) => void persist({ autoLockMinutes: Number(e.target.value) })}
+          >
+            {[1, 5, 15, 30].map((m) => (
+              <option key={m} value={m}>
+                {t('settings.autoLockMinutes', { n: m })}
+              </option>
+            ))}
+            <option value={0}>{t('settings.autoLockNever')}</option>
+          </select>
+          <p className="gen-hint">{t('settings.autoLockHint')}</p>
 
           <p className="field-label">
             {t('settings.diagnosticsLabel')}

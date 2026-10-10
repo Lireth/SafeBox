@@ -14,8 +14,6 @@ import type { VaultStore } from './vault'
  *   计数与退避仅存内存（重启重置，但重启后仍面对启动即锁）
  */
 
-/** 系统空闲自动锁定阈值（秒） */
-const IDLE_LOCK_SECONDS = 5 * 60
 /**
  * 系统空闲检测轮询间隔（毫秒）。
  * 仅作兜底：Windows/macOS 的即时锁定由 powerMonitor 'lock-screen' 事件覆盖（issue #27），
@@ -183,14 +181,18 @@ export class LockManager {
   /**
    * 启动锁定监控：
    * 1. powerMonitor 'lock-screen' 事件（Windows/macOS）——系统锁屏瞬间立即锁定
+   *    （独立于空闲阈值：系统锁屏是明确的离开信号，autoLockMinutes=0 也不豁免）
    * 2. 空闲轮询兜底（Linux 无 lock-screen 事件；Windows 快速用户切换等边缘场景）
+   *    阈值由 getIdleSeconds 动态提供（O20：设置项 autoLockMinutes × 60，0=永不），
+   *    每次轮询读取，设置变更无需重启监控即时生效。
    */
-  startIdleMonitor(store: VaultStore): void {
+  startIdleMonitor(store: VaultStore, getIdleSeconds: () => number): void {
     this.stopIdleMonitor()
     this.pollTimer = setInterval(() => {
       if (this.locked || !this.pinEnabled) return
       try {
-        if (powerMonitor.getSystemIdleTime() >= IDLE_LOCK_SECONDS) {
+        const limit = getIdleSeconds()
+        if (limit > 0 && powerMonitor.getSystemIdleTime() >= limit) {
           this.lock(store)
         }
       } catch {

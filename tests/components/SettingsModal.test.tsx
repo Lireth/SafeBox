@@ -46,6 +46,7 @@ const baseSettings = (overrides: Partial<AppSettings> = {}): AppSettings => ({
   minimizeToTray: false,
   language: 'zh',
   openAtLogin: false,
+  autoLockMinutes: 5,
   ...overrides,
 })
 
@@ -108,6 +109,39 @@ describe('SettingsModal 开机自启开关（issue #34）', () => {
     // 勾选自启后 → 联动提示消失
     await user.click(screen.getByRole('checkbox', { name: '开机自动启动秘匣' }))
     await waitFor(() => expect(screen.queryByText(/配合开机自启可获得常驻后台/)).toBeNull())
+  })
+})
+
+describe('SettingsModal 空闲自动锁定（O20）', () => {
+  it('选择 15 分钟：updateSettings 收到数值 15', async () => {
+    const user = userEvent.setup()
+    const { updateSettings } = mockSafebox(baseSettings({ autoLockMinutes: 5 }))
+    render(<SettingsModal onClose={() => {}} />)
+
+    const select = await screen.findByLabelText('空闲自动锁定')
+    expect(select).toHaveValue('5')
+    await user.selectOptions(select, '15')
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ autoLockMinutes: 15 }))
+  })
+
+  it('选择永不（0）：updateSettings 收到数值 0，下拉展示「永不」', async () => {
+    const user = userEvent.setup()
+    const { updateSettings } = mockSafebox(baseSettings({ autoLockMinutes: 30 }))
+    render(<SettingsModal onClose={() => {}} />)
+
+    const select = await screen.findByLabelText('空闲自动锁定')
+    expect(select).toHaveValue('30')
+    await user.selectOptions(select, '0')
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ autoLockMinutes: 0 }))
+    // updateSettings mock 展开补丁后返回 autoLockMinutes=0，UI 回读展示「永不」选项
+    await waitFor(() => expect(select).toHaveValue('0'))
+    expect(screen.getByRole('option', { name: '永不' })).toBeInTheDocument()
+  })
+
+  it('空闲锁定提示说明系统锁屏不受影响', async () => {
+    mockSafebox(baseSettings())
+    render(<SettingsModal onClose={() => {}} />)
+    expect(await screen.findByText(/系统锁屏（Win\+L）时仍会立即锁定/)).toBeInTheDocument()
   })
 })
 
