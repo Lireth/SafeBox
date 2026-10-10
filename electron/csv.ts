@@ -131,14 +131,33 @@ function escapeCsvField(value: string): string {
 }
 
 /**
+ * TOTP 列输出（F18）：默认参数输出裸 Base32（对主流导入器兼容性最大）；
+ * 带自定义参数（period/digits/algorithm）输出 otpauth 链接，经本应用导入器可无损还原参数。
+ */
+function totpCell(e: AccountEntry): string {
+  if (!e.totpSecret) return ''
+  const period = e.totpPeriod ?? 30
+  const digits = e.totpDigits ?? 6
+  const algorithm = e.totpAlgorithm ?? 'SHA1'
+  if (period === 30 && digits === 6 && algorithm === 'SHA1') return e.totpSecret
+  const params = new URLSearchParams({
+    secret: e.totpSecret,
+    period: String(period),
+    digits: String(digits),
+    algorithm,
+  })
+  return `otpauth://totp/${encodeURIComponent(e.title || 'entry')}?${params.toString()}`
+}
+
+/**
  * 将条目序列化为明文 CSV（含表头，CRLF 行结束）。
- * 仅导出未软删除的条目；totp 列输出规范化 Base32 秘钥（无则留空）。
+ * 仅导出未软删除的条目；totp 列见 totpCell（无秘钥留空）。
  */
 export function buildCsv(entries: AccountEntry[]): string {
   const lines = [EXPORT_HEADER.join(',')]
   for (const e of entries) {
     if (e.deletedAt) continue
-    const cells = [e.title, e.url, e.username, e.password, e.notes, e.totpSecret ?? '']
+    const cells = [e.title, e.url, e.username, e.password, e.notes, totpCell(e)]
     lines.push(cells.map(escapeCsvField).join(','))
   }
   return lines.join('\r\n') + '\r\n'

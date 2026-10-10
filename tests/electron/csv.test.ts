@@ -159,4 +159,23 @@ describe('buildCsv（明文导出序列化，issue #32）', () => {
     expect(csv).not.toContain('Gone')
     expect(buildCsv([])).toBe('name,url,username,password,notes,totp\r\n')
   })
+
+  it('TOTP 列：默认参数输出裸 Base32，自定义参数输出 otpauth 链接（F18 往返无损）', () => {
+    const csv = buildCsv([
+      entry({ title: 'Default', totpSecret: 'JBSWY3DPEHPK3PXP' }),
+      entry({ title: 'Custom', totpSecret: 'JBSWY3DPEHPK3PXP', totpPeriod: 60, totpDigits: 8, totpAlgorithm: 'SHA256' }),
+    ])
+    const lines = csv.split('\r\n')
+    expect(lines[1].endsWith(',JBSWY3DPEHPK3PXP')).toBe(true)
+    expect(lines[2]).toContain('otpauth://totp/Custom?')
+    expect(lines[2]).toContain('secret=JBSWY3DPEHPK3PXP')
+    expect(lines[2]).toContain('period=60')
+    expect(lines[2]).toContain('digits=8')
+    expect(lines[2]).toContain('algorithm=SHA256')
+    // 经本应用导入器往返：链接作为原始输入保留，主进程落盘时可重新解析出参数
+    const { drafts } = mapCsvEntries(parseCsvRows(csv))
+    expect(drafts[0].totpSecret).toBe('JBSWY3DPEHPK3PXP')
+    expect(drafts[1].totpSecret).toContain('period=60')
+    expect(drafts[1].totpSecret).toContain('digits=8')
+  })
 })

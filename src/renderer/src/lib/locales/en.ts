@@ -168,6 +168,9 @@ export const en = {
     tooShort: 'TOTP secret is too short (at least 8 Base32 characters)',
     badChar: 'TOTP secret contains an invalid character: {ch} (Base32 allows only A-Z and 2-7)',
     notBase32: 'TOTP secret is not valid Base32',
+    badPeriod: 'TOTP period must be an integer between 1 and 3600 seconds',
+    badDigits: 'TOTP digits must be 6 or 8',
+    badAlgorithm: 'TOTP algorithm must be SHA1 / SHA256 / SHA512',
   },
   backup: {
     title: 'Backup & Restore',

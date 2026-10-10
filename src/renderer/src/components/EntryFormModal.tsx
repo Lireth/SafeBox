@@ -3,7 +3,7 @@ import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { CATEGORIES } from '../lib/categories'
 import { generatePassword, passwordStrength } from '../lib/password'
-import { parseTOTPSecret } from '../lib/totp'
+import { buildOtpauthUrl, parseTotpParams } from '../lib/totp'
 import { t, useLang } from '../lib/i18n'
 import type { AccountEntry, EntryDraft } from '../../../../shared/types'
 
@@ -29,7 +29,12 @@ const DEFAULT_GENERATOR = { length: 16, upper: true, lower: true, digits: true, 
 
 export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps): React.JSX.Element {
   useLang()
-  const [form, setForm] = useState<EntryDraft>(entry ?? EMPTY_FORM)
+  // 编辑时 TOTP 字段回填重建的原始输入：带自定义参数的条目还原为 otpauth 链接，
+  // 提交后主进程可重新解析出 period/digits/algorithm（F18，避免编辑丢失参数）；
+  // 全默认参数保持裸 Base32（与历史行为一致）
+  const [form, setForm] = useState<EntryDraft>(() =>
+    entry && entry.totpSecret ? { ...entry, totpSecret: buildOtpauthUrl(entry) } : (entry ?? EMPTY_FORM),
+  )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -54,7 +59,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
     patch({ password: generatePassword(genOptions) })
   }
 
-  /** TOTP 输入即时校验：空值合法（不启用），非法时展示 parseTOTPSecret 的本地化错误 */
+  /** TOTP 输入即时校验：空值合法（不启用），非法时展示 parseTotpParams 的本地化错误（含参数校验，F18） */
   function handleTotpChange(raw: string): void {
     patch({ totpSecret: raw })
     if (!raw.trim()) {
@@ -62,7 +67,7 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
       return
     }
     try {
-      parseTOTPSecret(raw)
+      parseTotpParams(raw)
       setTotpError('')
     } catch (err) {
       setTotpError(err instanceof Error ? err.message : t('form.totpFormatErr'))

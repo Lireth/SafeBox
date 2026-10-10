@@ -168,6 +168,9 @@ export const zh = {
     tooShort: 'TOTP 秘钥过短（至少 8 个 Base32 字符）',
     badChar: 'TOTP 秘钥包含非法字符：{ch}（Base32 仅允许 A-Z 和 2-7）',
     notBase32: 'TOTP 秘钥不是有效的 Base32',
+    badPeriod: 'TOTP 周期须为 1-3600 的整数（秒）',
+    badDigits: 'TOTP 位数仅支持 6 或 8 位',
+    badAlgorithm: 'TOTP 算法仅支持 SHA1 / SHA256 / SHA512',
   },
   backup: {
     title: '备份与恢复',

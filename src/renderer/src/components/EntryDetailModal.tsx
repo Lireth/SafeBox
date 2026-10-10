@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
 import { getCategory } from '../lib/categories'
-import { TOTP_PERIOD_SECONDS, totpCode, totpRemainingSeconds } from '../lib/totp'
+import { TOTP_DIGITS, TOTP_PERIOD_SECONDS, totpCode, totpRemainingSeconds } from '../lib/totp'
 import { t, useLang } from '../lib/i18n'
 import type { AccountEntry, PasswordHistoryItem } from '../../../../shared/types'
 
@@ -152,7 +152,13 @@ export function EntryDetailModal({
         {entry.totpSecret && (
           <div className="detail-field">
             <span className="detail-label">{t('detail.totpLabel')}</span>
-            <TOTPDisplay secret={entry.totpSecret} onCopy={onCopy} />
+            <TOTPDisplay
+              secret={entry.totpSecret}
+              period={entry.totpPeriod ?? TOTP_PERIOD_SECONDS}
+              digits={entry.totpDigits ?? TOTP_DIGITS}
+              algorithm={entry.totpAlgorithm}
+              onCopy={onCopy}
+            />
           </div>
         )}
 
@@ -241,12 +247,18 @@ function HistoryRow({
   )
 }
 
-/** TOTP 验证码展示：6 位码值 + 30 秒倒计时环 + 一键复制（每秒本地重算，零网络） */
+/** TOTP 验证码展示：码值 + 周期倒计时环 + 一键复制（每秒本地重算，零网络；参数取自条目，F18） */
 function TOTPDisplay({
   secret,
+  period,
+  digits,
+  algorithm,
   onCopy,
 }: {
   secret: string
+  period: number
+  digits: number
+  algorithm: 'SHA1' | 'SHA256' | 'SHA512' | undefined
   onCopy: (text: string, label: string) => void
 }): React.JSX.Element {
   useLang()
@@ -256,7 +268,7 @@ function TOTPDisplay({
   useEffect(() => {
     let cancelled = false
     function tick(): void {
-      void totpCode(secret)
+      void totpCode(secret, Date.now(), { period, digits, algorithm })
         .then((code) => {
           if (!cancelled) setState({ now: Date.now(), code })
         })
@@ -270,9 +282,9 @@ function TOTPDisplay({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [secret])
+  }, [secret, period, digits, algorithm])
 
-  const remaining = state.now ? totpRemainingSeconds(state.now) : TOTP_PERIOD_SECONDS
+  const remaining = state.now ? totpRemainingSeconds(state.now, period) : period
   const radius = 8
   const circumference = 2 * Math.PI * radius
   const urgent = remaining <= 5
@@ -296,11 +308,13 @@ function TOTPDisplay({
           strokeWidth="2"
           strokeLinecap="round"
           strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - remaining / TOTP_PERIOD_SECONDS)}
+          strokeDashoffset={circumference * (1 - remaining / period)}
           transform="rotate(-90 11 11)"
         />
       </svg>
-      <span className="detail-value mono totp-code">{state.code ? `${state.code.slice(0, 3)} ${state.code.slice(3)}` : '••• •••'}</span>
+      <span className="detail-value mono totp-code">
+        {state.code ? `${state.code.slice(0, digits / 2)} ${state.code.slice(digits / 2)}` : '••• •••'}
+      </span>
       <span className="totp-remaining">{state.now ? `${remaining}s` : ''}</span>
       {state.code && (
         <button type="button" className="icon-btn" title={t('detail.copyTotp')} onClick={() => onCopy(state.code as string, t('detail.totpCopied'))}>

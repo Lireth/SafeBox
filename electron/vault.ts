@@ -30,8 +30,8 @@ const PASSWORD_HISTORY_LIMIT = 5
  * 数据磁盘文件结构。
  * version 历史：v1 主密码加密（已废弃，读取失败走 broken 备份）；v2 safeStorage 加密；
  * v3 条目支持软删除（deletedAt）；v4 条目支持 TOTP 秘钥（totpSecret）；
- * v5 条目支持历史密码（passwordHistory）。
- * v2~v5 结构向后兼容：新增字段均可选且缺省视为未启用，
+ * v5 条目支持历史密码（passwordHistory）；v6 条目支持 TOTP 参数（totpPeriod/totpDigits/totpAlgorithm，F18）。
+ * v2~v6 结构向后兼容：新增字段均可选且缺省视为未启用，
  * 因此 load() 不做版本拦截，旧文件升级无缝兼容。
  */
 interface StoreFile {
@@ -250,6 +250,9 @@ export class VaultStore {
     const cleaned = incoming.map((entry) => ({
       id: typeof entry.id === 'string' && entry.id ? entry.id : crypto.randomUUID(),
       ...normalizeDraft(entry),
+      // 备份条目的 TOTP 参数以独立字段透传（校验+默认归一，F18）：
+      // normalizeDraft 仅能从 totpSecret 原始输入解析参数，而备份中的秘钥已是规范化裸 Base32
+      ...sanitizeTotpParams(entry),
       favorite: entry.favorite === true,
       createdAt: typeof entry.createdAt === 'number' ? entry.createdAt : now,
       updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now,
@@ -311,9 +314,9 @@ export class VaultStore {
     const json = JSON.stringify({ entries: this.entries, savedAt: Date.now() } satisfies StorePayload)
     let meta: StoreFile
     if (safeStorage.isEncryptionAvailable()) {
-      meta = { version: 5, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
+      meta = { version: 6, encrypted: true, payload: safeStorage.encryptString(json).toString('base64') }
     } else {
-      meta = { version: 5, encrypted: false, payload: json }
+      meta = { version: 6, encrypted: false, payload: json }
     }
     const tmp = `${this.file}.tmp`
     fs.writeFileSync(tmp, JSON.stringify(meta), 'utf-8')
@@ -419,7 +422,11 @@ function normalizeEntry(raw: unknown): AccountEntry | null {
     updatedAt: e.updatedAt,
   }
   if (typeof e.deletedAt === 'number') entry.deletedAt = e.deletedAt
-  if (isStr(e.totpSecret) && e.totpSecret) entry.totpSecret = e.totpSecret
+  if (isStr(e.totpSecret) && e.totpSecret) {
+    entry.totpSecret = e.totpSecret
+    // TOTP 参数字段仅在秘钥存在时有意义；非法值静默丢弃、默认值归一（F18）
+    Object.assign(entry, sanitizeTotpParams(e))
+  }
   // 历史密码：逐条校验结构，非法条目剔除；全部非法或空数组则不设置该字段
   const history = sanitizeHistory(e.passwordHistory)
   if (history) entry.passwordHistory = history
@@ -455,6 +462,9 @@ function normalizeDraft(draft: EntryDraft): Omit<AccountEntry, 'id' | 'favorite'
   const title = str(draft.title, 100, '名称')
   if (!title) throw new Error('请填写账号名称')
 
+  // TOTP 秘钥与参数一并解析（F18）；三参数键恒存在（值可 undefined），
+  // 保证 update() 的 spread 覆盖能正确清除旧参数
+  const totp = normalizeTotp(draft.totpSecret)
   return {
     title,
     // 分类不在预置列表时归入 other
@@ -463,36 +473,109 @@ function normalizeDraft(draft: EntryDraft): Omit<AccountEntry, 'id' | 'favorite'
     username: str(draft.username, 200, '用户名'),
     password: typeof draft.password === 'string' ? draft.password.slice(0, 500) : '',
     notes: str(draft.notes, 2000, '备注'),
-    // TOTP 秘钥规范化为 Base32 后存储（支持 otpauth:// 链接与裸 Base32）
-    totpSecret: normalizeTotp(draft.totpSecret),
+    totpSecret: totp?.secret,
+    totpPeriod: totp?.period,
+    totpDigits: totp?.digits,
+    totpAlgorithm: totp?.algorithm,
   }
 }
 
+/** TOTP 解析结果（存储侧）：默认参数（30/6/SHA1）归一为 undefined 不落盘，保持数据最小冗余 */
+interface StoredTotp {
+  secret: string
+  period?: number
+  digits?: number
+  algorithm?: 'SHA1' | 'SHA256' | 'SHA512'
+}
+
 /**
- * TOTP 秘钥存储侧规范化：otpauth:// 链接提取 secret 参数，裸 Base32 做字符集校验。
- * 返回规范化 Base32（大写、无填充）；空输入返回 undefined。
- * 与渲染端 lib/totp.ts 的 parseTOTPSecret 保持一致（渲染端为完整实现，此处为存储校验）。
+ * TOTP 秘钥存储侧规范化（F18 扩展参数解析）：otpauth:// 链接提取 secret/period/digits/algorithm，
+ * 裸 Base32 做字符集校验（参数全默认）。空输入返回 undefined。
+ * 校验规则与渲染端 lib/totp.ts 的 parseTotpParams 保持一致（渲染端为完整实现，此处为存储校验）。
  */
-function normalizeTotp(raw: unknown): string | undefined {
+function normalizeTotp(raw: unknown): StoredTotp | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined
   if (typeof raw !== 'string') throw new Error('TOTP 秘钥格式错误')
   const trimmed = raw.trim()
   if (!trimmed) return undefined
   if (trimmed.length > 500) throw new Error('TOTP 秘钥过长')
 
+  let secret: string
+  let period: number | undefined
+  let digits: number | undefined
+  let algorithm: StoredTotp['algorithm']
+
   if (trimmed.toLowerCase().startsWith('otpauth://')) {
-    let secret: string | null
+    let url: URL
+    let rawSecret: string | null
     try {
-      const url = new URL(trimmed)
+      url = new URL(trimmed)
       if (url.protocol !== 'otpauth:' || url.host.toLowerCase() !== 'totp') throw new Error('bad type')
-      secret = url.searchParams.get('secret')
+      rawSecret = url.searchParams.get('secret')
     } catch {
       throw new Error('otpauth 链接格式错误（仅支持 totp 类型）')
     }
-    if (!secret) throw new Error('otpauth 链接缺少 secret 参数')
-    return assertBase32(secret)
+    if (!rawSecret) throw new Error('otpauth 链接缺少 secret 参数')
+    secret = assertBase32(rawSecret)
+    period = parseStoredPeriod(url.searchParams.get('period'))
+    digits = parseStoredDigits(url.searchParams.get('digits'))
+    algorithm = parseStoredAlgorithm(url.searchParams.get('algorithm'))
+  } else {
+    secret = assertBase32(trimmed)
   }
-  return assertBase32(trimmed)
+
+  const result: StoredTotp = { secret }
+  if (period !== undefined) result.period = period
+  if (digits !== undefined) result.digits = digits
+  if (algorithm !== undefined) result.algorithm = algorithm
+  return result
+}
+
+/** otpauth period 参数（存储侧）：缺省/默认 30 不落盘；须为 1-3600 整数 */
+function parseStoredPeriod(raw: string | null): number | undefined {
+  if (raw === null || raw === '') return undefined
+  const value = Number(raw)
+  if (!Number.isInteger(value) || value < 1 || value > 3600) throw new Error('TOTP 周期须为 1-3600 的整数（秒）')
+  return value === 30 ? undefined : value
+}
+
+/** otpauth digits 参数（存储侧）：缺省/默认 6 不落盘；仅支持 6 或 8 */
+function parseStoredDigits(raw: string | null): number | undefined {
+  if (raw === null || raw === '') return undefined
+  const value = Number(raw)
+  if (value !== 6 && value !== 8) throw new Error('TOTP 位数仅支持 6 或 8 位')
+  return value === 6 ? undefined : value
+}
+
+/** otpauth algorithm 参数（存储侧）：缺省/默认 SHA1 不落盘；大小写与连字符不敏感 */
+function parseStoredAlgorithm(raw: string | null): StoredTotp['algorithm'] {
+  if (raw === null || raw === '') return undefined
+  const value = raw.toUpperCase().replace(/-/g, '')
+  if (value !== 'SHA1' && value !== 'SHA256' && value !== 'SHA512') {
+    throw new Error('TOTP 算法仅支持 SHA1 / SHA256 / SHA512')
+  }
+  return value === 'SHA1' ? undefined : value
+}
+
+/**
+ * 读取 / 导入侧校验条目上既存的 TOTP 参数字段（F18）：
+ * 非法值静默丢弃、默认值归一不落盘，与 normalizeTotp 的写入侧规则一致。
+ * 返回键名与 AccountEntry 字段一致，可直接 spread 进条目。
+ */
+function sanitizeTotpParams(raw: {
+  totpPeriod?: unknown
+  totpDigits?: unknown
+  totpAlgorithm?: unknown
+}): Pick<AccountEntry, 'totpPeriod' | 'totpDigits' | 'totpAlgorithm'> {
+  const out: Pick<AccountEntry, 'totpPeriod' | 'totpDigits' | 'totpAlgorithm'> = {}
+  const period = raw.totpPeriod
+  if (typeof period === 'number' && Number.isInteger(period) && period >= 1 && period <= 3600 && period !== 30) {
+    out.totpPeriod = period
+  }
+  if (raw.totpDigits === 8) out.totpDigits = 8
+  const algorithm = raw.totpAlgorithm
+  if (algorithm === 'SHA256' || algorithm === 'SHA512') out.totpAlgorithm = algorithm
+  return out
 }
 
 /** Base32 校验与规范化（存储侧） */

@@ -35,6 +35,12 @@ export interface AccountEntry {
   deletedAt?: number
   /** TOTP 双因素秘钥（规范化 Base32）；缺省表示未启用双因素 */
   totpSecret?: string
+  /** TOTP 周期秒数（otpauth period 参数）；缺省为默认 30 秒（F18） */
+  totpPeriod?: number
+  /** TOTP 码位数（otpauth digits 参数，6 或 8）；缺省为默认 6 位（F18） */
+  totpDigits?: number
+  /** TOTP 哈希算法（otpauth algorithm 参数）；缺省为默认 SHA1（F18） */
+  totpAlgorithm?: 'SHA1' | 'SHA256' | 'SHA512'
   /** 历史密码（最近 5 条，新→旧）；缺省表示从未修改过密码 */
   passwordHistory?: PasswordHistoryItem[]
 }
@@ -42,7 +48,7 @@ export interface AccountEntry {
 /** 新增 / 编辑时由渲染端提交的数据 */
 export type EntryDraft = Pick<AccountEntry, 'title' | 'category' | 'url' | 'username' | 'password' | 'notes'> & {
   favorite?: boolean
-  /** TOTP 秘钥原始输入：otpauth:// 链接或裸 Base32，落盘前由主进程规范化 */
+  /** TOTP 秘钥原始输入：otpauth:// 链接（可含 period/digits/algorithm 参数）或裸 Base32，落盘前由主进程规范化 */
   totpSecret?: string
 }
 

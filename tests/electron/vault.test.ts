@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { VaultStore } from '../../electron/vault'
-import type { EntryDraft } from '../../shared/types'
+import type { AccountEntry, EntryDraft } from '../../shared/types'
 import { safeStorage } from '../mocks/electron'
 
 /** 构造合法草稿，测试中按需覆盖字段 */
@@ -377,6 +377,73 @@ describe('VaultStore', () => {
         store.mergeEntries([{ ...base, id: 't2', createdAt: 1, updatedAt: 2, totpSecret: '!!!' }]),
       ).toThrow('Base32')
     })
+
+    it('otpauth 参数（period/digits/algorithm）随秘钥解析存储（F18）', () => {
+      const created = store.add(
+        draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=60&digits=8&algorithm=sha256' }),
+      )
+      expect(created.totpSecret).toBe('ABCD2345ABCD2345')
+      expect(created.totpPeriod).toBe(60)
+      expect(created.totpDigits).toBe(8)
+      expect(created.totpAlgorithm).toBe('SHA256')
+    })
+
+    it('默认参数不落盘（30/6/SHA1 归一为缺省，数据最小冗余）', () => {
+      const created = store.add(
+        draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=30&digits=6&algorithm=SHA1' }),
+      )
+      expect(created.totpSecret).toBe('ABCD2345ABCD2345')
+      expect(created.totpPeriod).toBeUndefined()
+      expect(created.totpDigits).toBeUndefined()
+      expect(created.totpAlgorithm).toBeUndefined()
+    })
+
+    it('非法参数拒绝（F18）', () => {
+      expect(() => store.add(draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=0' }))).toThrow('周期')
+      expect(() => store.add(draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=abc' }))).toThrow('周期')
+      expect(() => store.add(draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=3601' }))).toThrow('周期')
+      expect(() => store.add(draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&digits=7' }))).toThrow('位数')
+      expect(() => store.add(draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&algorithm=md5' }))).toThrow('算法')
+    })
+
+    it('update 编辑可更新参数；改裸 Base32 清除参数回落默认', () => {
+      const created = store.add(draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=60' }))
+      const updated = store.update(
+        created.id,
+        draft({ totpSecret: 'otpauth://totp/x?secret=abcd2345abcd2345&period=120&digits=8&algorithm=SHA512' }),
+      )
+      expect(updated.totpPeriod).toBe(120)
+      expect(updated.totpDigits).toBe(8)
+      expect(updated.totpAlgorithm).toBe('SHA512')
+      // 改贴裸 Base32 = 参数回落默认（normalizeDraft 三键恒存在，spread 覆盖清除）
+      const cleared = store.update(created.id, draft({ totpSecret: 'abcd2345abcd2345' }))
+      expect(cleared.totpSecret).toBe('ABCD2345ABCD2345')
+      expect(cleared.totpPeriod).toBeUndefined()
+      expect(cleared.totpDigits).toBeUndefined()
+      expect(cleared.totpAlgorithm).toBeUndefined()
+    })
+
+    it('mergeEntries 透传备份独立参数字段（校验 + 默认归一 + 非法丢弃，F18）', () => {
+      const base = { title: 'B', category: 'dev', url: '', username: '', password: '', notes: '', favorite: false }
+      store.mergeEntries([
+        { ...base, id: 'p1', createdAt: 1, updatedAt: 2, totpSecret: 'abcd2345abcd2345', totpPeriod: 60, totpDigits: 8, totpAlgorithm: 'SHA256' },
+        { ...base, id: 'p2', createdAt: 1, updatedAt: 2, totpSecret: 'abcd2345abcd2345', totpPeriod: 30, totpDigits: 6, totpAlgorithm: 'SHA1' },
+        { ...base, id: 'p3', createdAt: 1, updatedAt: 2, totpSecret: 'abcd2345abcd2345', totpPeriod: -5, totpDigits: 9, totpAlgorithm: 'MD5' as AccountEntry['totpAlgorithm'] },
+      ])
+      const by = (id: string) => store.list().find((e) => e.id === id)!
+      expect(by('p1').totpPeriod).toBe(60)
+      expect(by('p1').totpDigits).toBe(8)
+      expect(by('p1').totpAlgorithm).toBe('SHA256')
+      // 默认值归一为缺省
+      expect(by('p2').totpPeriod).toBeUndefined()
+      expect(by('p2').totpDigits).toBeUndefined()
+      expect(by('p2').totpAlgorithm).toBeUndefined()
+      // 非法值丢弃，秘钥本身保留
+      expect(by('p3').totpSecret).toBe('ABCD2345ABCD2345')
+      expect(by('p3').totpPeriod).toBeUndefined()
+      expect(by('p3').totpDigits).toBeUndefined()
+      expect(by('p3').totpAlgorithm).toBeUndefined()
+    })
   })
 
   /** 以明文形式写入数据文件（绕过加密，模拟旧版本磁盘内容） */
@@ -520,6 +587,27 @@ describe('VaultStore', () => {
       expect(reloaded.list()[0].totpSecret).toBe('ABCD2345')
     })
 
+    it('TOTP 参数读取校验：合法保留、非法丢弃、无秘钥时连带丢弃（F18）', () => {
+      writeRawStore(tmpDir, [
+        validEntry({ id: 'p1', totpSecret: 'ABCD2345', totpPeriod: 60, totpDigits: 8, totpAlgorithm: 'SHA256' }),
+        validEntry({ id: 'p2', totpSecret: 'ABCD2345', totpPeriod: 9999, totpDigits: 7, totpAlgorithm: 'MD5' }),
+        validEntry({ id: 'p3', totpPeriod: 60 }), // 无秘钥：参数无意义，连带丢弃
+      ])
+      const reloaded = new VaultStore(tmpDir)
+      reloaded.load()
+      const by = (id: string) => reloaded.list().find((e) => e.id === id)!
+      expect(by('p1').totpPeriod).toBe(60)
+      expect(by('p1').totpDigits).toBe(8)
+      expect(by('p1').totpAlgorithm).toBe('SHA256')
+      // 非法参数静默丢弃（不连坐秘钥与条目）
+      expect(by('p2').totpSecret).toBe('ABCD2345')
+      expect(by('p2').totpPeriod).toBeUndefined()
+      expect(by('p2').totpDigits).toBeUndefined()
+      expect(by('p2').totpAlgorithm).toBeUndefined()
+      expect(by('p3').totpPeriod).toBeUndefined()
+      expect(reloaded.getLoadStatus().status).toBe('ok')
+    })
+
     it('entries 非数组时降级为空数据（ok，无跳过计数）', () => {
       writeRawStore(tmpDir, undefined as unknown as unknown[])
       const reloaded = new VaultStore(tmpDir)
@@ -586,11 +674,12 @@ describe('VaultStore', () => {
       expect(history?.map((h) => h.password)).toEqual(['p6', 'p5', 'p4', 'p3', 'p2'])
     })
 
-    it('历史随加密往返保留；磁盘 version 升 v5', () => {
+    it('历史随加密往返保留；磁盘 version 升 v6', () => {
       const created = store.add(draft({ title: 'A', password: 'p1' }))
       store.update(created.id, draft({ title: 'A', password: 'p2' }))
       const meta = JSON.parse(fs.readFileSync(path.join(tmpDir, 'vault.safebox'), 'utf-8'))
-      expect(meta.version).toBe(5)
+      // v6：TOTP 参数字段（F18）；load 不拦截版本，旧文件升级无缝兼容
+      expect(meta.version).toBe(6)
       const reloaded = new VaultStore(tmpDir)
       reloaded.load()
       expect(reloaded.list()[0].passwordHistory?.[0].password).toBe('p1')
