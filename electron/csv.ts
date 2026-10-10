@@ -1,10 +1,11 @@
-import type { EntryDraft } from '../shared/types'
+import type { AccountEntry, EntryDraft } from '../shared/types'
 
 /**
  * 第三方密码管理器 CSV 导入解析（纯逻辑，零 IO）
  * - parseCsvRows：RFC 4180 解析（引号包裹、"" 转义、CRLF、字段内换行），剥离 BOM
  * - mapCsvEntries：按表头列名映射为 EntryDraft 列表，兼容 Chrome / Bitwarden / 1Password 常见导出格式
  *   表头归一化后匹配候选列（大小写、空格、下划线、连字符不敏感）
+ * - buildCsv：条目 → 明文 CSV 序列化（RFC 4180 转义，供数据可携带性导出，issue #32）
  */
 
 /** 解析 CSV 文本为二维字符串数组（含表头行）；空文本返回 [] */
@@ -118,4 +119,27 @@ export function mapCsvEntries(rows: string[][]): CsvMappingResult {
     })
   }
   return { drafts, invalid }
+}
+
+/** CSV 表头（列名对齐主流管理器，可被本应用导入映射与 Bitwarden/Chrome 识别） */
+const EXPORT_HEADER = ['name', 'url', 'username', 'password', 'notes', 'totp']
+
+/** RFC 4180 字段转义：含逗号/引号/换行则整体加引号，内部引号翻倍 */
+function escapeCsvField(value: string): string {
+  if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
+  return value
+}
+
+/**
+ * 将条目序列化为明文 CSV（含表头，CRLF 行结束）。
+ * 仅导出未软删除的条目；totp 列输出规范化 Base32 秘钥（无则留空）。
+ */
+export function buildCsv(entries: AccountEntry[]): string {
+  const lines = [EXPORT_HEADER.join(',')]
+  for (const e of entries) {
+    if (e.deletedAt) continue
+    const cells = [e.title, e.url, e.username, e.password, e.notes, e.totpSecret ?? '']
+    lines.push(cells.map(escapeCsvField).join(','))
+  }
+  return lines.join('\r\n') + '\r\n'
 }

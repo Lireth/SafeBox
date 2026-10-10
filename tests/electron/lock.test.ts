@@ -250,6 +250,33 @@ describe('LockManager', () => {
     })
   })
 
+  describe('verifyPin 无副作用身份校验（明文 CSV 导出前置，issue #32）', () => {
+    it('未设置 PIN 时直接通过（调用方以 pinEnabled 区分）', () => {
+      expect(() => lock.verifyPin(undefined)).not.toThrow()
+      expect(() => lock.verifyPin('anything')).not.toThrow()
+    })
+
+    it('PIN 正确通过，错误抛「PIN 不正确」', () => {
+      lock.setupPin(undefined, '123456')
+      expect(() => lock.verifyPin('123456')).not.toThrow()
+      expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      expect(() => lock.verifyPin(123456)).toThrow('不正确')
+    })
+
+    it('校验不改变锁定态、不消耗解锁退避配额', () => {
+      lock.setupPin(undefined, '123456')
+      lock.lock(store)
+      // 连续错误校验 10 次：锁定态保持，且解锁失败计数不受影响
+      for (let i = 0; i < 10; i++) {
+        expect(() => lock.verifyPin('000000')).toThrow('不正确')
+      }
+      expect(lock.isLocked).toBe(true)
+      // 正确 PIN 仍可立即解锁（未因 verifyPin 失败进入冷却）
+      expect(() => lock.unlock('123456', store)).not.toThrow()
+      expect(lock.isLocked).toBe(false)
+    })
+  })
+
   describe('系统锁屏事件即时锁定（powerMonitor lock-screen）', () => {
     it('lock-screen 事件立即锁定，无需等待轮询', () => {
       lock.setupPin(undefined, '123456')

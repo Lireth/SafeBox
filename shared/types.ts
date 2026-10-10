@@ -108,6 +108,15 @@ export interface CsvImportResult {
   invalid?: number
 }
 
+/** 明文 CSV 导出结果（数据可携带性；取消时 canceled=true，不产生文件） */
+export interface CsvExportResult {
+  canceled: boolean
+  /** 保存路径（取消时缺省） */
+  path?: string
+  /** 导出条数（不含回收站条目） */
+  count?: number
+}
+
 export interface SafeBoxAPI {
   /** 列出所有账号 */
   listEntries(): Promise<AccountEntry[]>
@@ -135,6 +144,8 @@ export interface SafeBoxAPI {
   importEncryptedBackup(password: string): Promise<BackupImportResult>
   /** 从第三方密码管理器导出的 CSV 文件导入（弹出系统打开对话框，按名称+用户名去重） */
   importCsv(): Promise<CsvImportResult>
+  /** 导出明文 CSV（数据可携带性；渲染端已强确认，主进程校验 PIN 后弹出保存对话框） */
+  exportCsv(pin: string | undefined): Promise<CsvExportResult>
   /** 订阅更新就绪事件（新版本已下载），返回取消订阅函数 */
   onUpdateReady(listener: (info: { version: string }) => void): () => void
   /** 立即重启并安装已下载的更新 */

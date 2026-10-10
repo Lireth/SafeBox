@@ -14,7 +14,7 @@ import { SettingsModal } from './components/SettingsModal'
 import { Icon } from './components/Icon'
 import { getCategory, type FilterId } from './lib/categories'
 import { filterForDigit } from './lib/hotkeys'
-import type { AccountEntry, BackupExportResult, BackupImportResult, CsvImportResult, EntryDraft } from '../../../shared/types'
+import type { AccountEntry, BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult, EntryDraft } from '../../../shared/types'
 
 interface FormTarget {
   mode: 'new' | 'edit'
@@ -395,6 +395,10 @@ export default function App(): React.JSX.Element {
     return result
   }
 
+  async function handleExportCsv(pin: string | undefined): Promise<CsvExportResult> {
+    return window.safebox.exportCsv(pin)
+  }
+
   // ---- 渲染 ----
 
   if (!ready) {
@@ -595,6 +599,8 @@ export default function App(): React.JSX.Element {
           onExport={handleExportBackup}
           onImport={handleImportBackup}
           onImportCsv={handleImportCsv}
+          onExportCsv={handleExportCsv}
+          pinEnabled={pinEnabled}
         />
       )}
 

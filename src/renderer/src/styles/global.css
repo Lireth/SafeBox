@@ -241,6 +241,36 @@ textarea {
   padding: 2px 0 6px;
 }
 
+/* 明文 CSV 导出强确认区（issue #32） */
+.csv-confirm {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--danger-soft);
+}
+
+.csv-confirm-warning {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.csv-confirm-icon {
+  flex-shrink: 0;
+  color: var(--danger);
+  margin-top: 2px;
+}
+
+.csv-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .range {
   width: 100%;
   margin: 6px 0 2px;

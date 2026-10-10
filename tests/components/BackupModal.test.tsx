@@ -2,15 +2,17 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { BackupModal } from '../../src/renderer/src/components/BackupModal'
-import type { BackupExportResult, BackupImportResult, CsvImportResult } from '../../shared/types'
+import type { BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult } from '../../shared/types'
 
 /** 渲染弹窗并返回可控的 props 替身（BackupModal 全部行为经 props 注入，无 window.safebox 依赖） */
-function setup() {
+function setup(options: { pinEnabled?: boolean } = {}) {
   const props = {
     onClose: vi.fn(),
     onExport: vi.fn<() => Promise<BackupExportResult>>(),
     onImport: vi.fn<() => Promise<BackupImportResult>>(),
     onImportCsv: vi.fn<() => Promise<CsvImportResult>>(),
+    onExportCsv: vi.fn<(pin: string | undefined) => Promise<CsvExportResult>>(),
+    pinEnabled: options.pinEnabled ?? false,
   }
   render(<BackupModal {...props} />)
   return props
@@ -124,5 +126,69 @@ describe('BackupModal 导入结果提示', () => {
     await user.click(screen.getByRole('button', { name: '选择 CSV 文件并导入' }))
     await waitFor(() => expect(props.onImportCsv).toHaveBeenCalled())
     expect(screen.queryByText(/CSV 导入完成/)).toBeNull()
+  })
+})
+
+describe('BackupModal 明文 CSV 导出强确认', () => {
+  it('未确认前不触发导出', () => {
+    const props = setup()
+    expect(screen.getByRole('button', { name: '导出明文 CSV…' })).toBeInTheDocument()
+    expect(props.onExportCsv).not.toHaveBeenCalled()
+  })
+
+  it('未启用 PIN：确认后直接导出（pin 传 undefined）并显示保管提示', async () => {
+    const user = userEvent.setup()
+    const props = setup({ pinEnabled: false })
+    props.onExportCsv.mockResolvedValue({ canceled: false, path: 'C:/e.csv', count: 7 })
+    await user.click(screen.getByRole('button', { name: '导出明文 CSV…' }))
+    expect(await screen.findByText(/风险确认/)).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('锁定 PIN')).toBeNull()
+    await user.click(screen.getByRole('button', { name: '我已了解风险，继续导出' }))
+    await waitFor(() => expect(props.onExportCsv).toHaveBeenCalledWith(undefined))
+    expect(await screen.findByText('已导出 7 条账号为明文 CSV。文件未加密，请妥善保管并尽快删除。')).toBeInTheDocument()
+  })
+
+  it('启用 PIN：未输入 PIN 时确认按钮禁用，输入后携带 PIN 导出', async () => {
+    const user = userEvent.setup()
+    const props = setup({ pinEnabled: true })
+    props.onExportCsv.mockResolvedValue({ canceled: false, path: 'C:/e.csv', count: 3 })
+    await user.click(screen.getByRole('button', { name: '导出明文 CSV…' }))
+    const confirmBtn = screen.getByRole('button', { name: '我已了解风险，继续导出' })
+    expect(confirmBtn).toBeDisabled()
+    await user.type(screen.getByPlaceholderText('锁定 PIN'), '123456')
+    expect(confirmBtn).toBeEnabled()
+    await user.click(confirmBtn)
+    await waitFor(() => expect(props.onExportCsv).toHaveBeenCalledWith('123456'))
+  })
+
+  it('取消强确认回到初始态，不触发导出', async () => {
+    const user = userEvent.setup()
+    const props = setup({ pinEnabled: true })
+    await user.click(screen.getByRole('button', { name: '导出明文 CSV…' }))
+    await user.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.getByRole('button', { name: '导出明文 CSV…' })).toBeInTheDocument()
+    expect(props.onExportCsv).not.toHaveBeenCalled()
+  })
+
+  it('保存对话框取消时不显示成功提示', async () => {
+    const user = userEvent.setup()
+    const props = setup({ pinEnabled: false })
+    props.onExportCsv.mockResolvedValue({ canceled: true })
+    await user.click(screen.getByRole('button', { name: '导出明文 CSV…' }))
+    await user.click(screen.getByRole('button', { name: '我已了解风险，继续导出' }))
+    await waitFor(() => expect(props.onExportCsv).toHaveBeenCalled())
+    expect(screen.queryByText(/已导出.*明文 CSV/)).toBeNull()
+  })
+
+  it('PIN 错误时显示主进程真实错误并停留在确认态', async () => {
+    const user = userEvent.setup()
+    const props = setup({ pinEnabled: true })
+    props.onExportCsv.mockRejectedValue(new Error('PIN 不正确'))
+    await user.click(screen.getByRole('button', { name: '导出明文 CSV…' }))
+    await user.type(screen.getByPlaceholderText('锁定 PIN'), '000000')
+    await user.click(screen.getByRole('button', { name: '我已了解风险，继续导出' }))
+    expect(await screen.findByText('PIN 不正确')).toBeInTheDocument()
+    // 仍在确认态（可重试），未回退初始按钮
+    expect(screen.getByRole('button', { name: '我已了解风险，继续导出' })).toBeInTheDocument()
   })
 })

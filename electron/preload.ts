@@ -5,6 +5,7 @@ import type {
   AppSettings,
   BackupExportResult,
   BackupImportResult,
+  CsvExportResult,
   CsvImportResult,
   LoadStatus,
   LockState,
@@ -40,6 +41,7 @@ const INVOKE_CHANNELS = new Set([
   'backup:export',
   'backup:import',
   'backup:import-csv',
+  'backup:export-csv',
   'update:install'
 ])
 
@@ -77,6 +79,7 @@ export const electronAPI: SafeBoxAPI = {
   exportEncryptedBackup: (password) => invoke<BackupExportResult>('backup:export', password),
   importEncryptedBackup: (password) => invoke<BackupImportResult>('backup:import', password),
   importCsv: () => invoke<CsvImportResult>('backup:import-csv'),
+  exportCsv: (pin) => invoke<CsvExportResult>('backup:export-csv', pin),
   onUpdateReady: (listener) => {
     const wrapped = (_event: IpcRendererEvent, info: { version: string }): void => listener(info)
     ipcRenderer.on('update:available', wrapped)

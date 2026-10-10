@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { mapCsvEntries, mapCsvHeader, parseCsvRows } from '../../electron/csv'
+import { buildCsv, mapCsvEntries, mapCsvHeader, parseCsvRows } from '../../electron/csv'
+import type { AccountEntry } from '../../shared/types'
+
+/** 构造合法条目夹具（导出测试用） */
+function entry(overrides: Partial<AccountEntry> & { title: string }): AccountEntry {
+  const now = Date.now()
+  return {
+    id: 'id-' + overrides.title,
+    category: 'other',
+    url: '',
+    username: '',
+    password: '',
+    notes: '',
+    favorite: false,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+    title: overrides.title,
+  }
+}
 
 describe('parseCsvRows（RFC 4180 解析）', () => {
   it('基础逗号分隔与 CRLF 换行', () => {
@@ -102,5 +121,42 @@ describe('mapCsvEntries（行映射与容错）', () => {
 
   it('空文件抛错', () => {
     expect(() => mapCsvEntries([])).toThrow('CSV 文件为空')
+  })
+})
+
+describe('buildCsv（明文导出序列化，issue #32）', () => {
+  it('表头对齐主流格式 + CRLF 行结束', () => {
+    const csv = buildCsv([entry({ title: 'GitHub', url: 'https://github.com', username: 'u', password: 'p' })])
+    const lines = csv.split('\r\n')
+    expect(lines[0]).toBe('name,url,username,password,notes,totp')
+    expect(lines[1]).toBe('GitHub,https://github.com,u,p,,')
+    expect(csv.endsWith('\r\n')).toBe(true)
+  })
+
+  it('含逗号/引号/换行的字段按 RFC 4180 转义', () => {
+    const csv = buildCsv([entry({ title: 'Doe, John', notes: 'He said "hi"\nbye' })])
+    const rows = parseCsvRows(csv)
+    expect(rows[1][0]).toBe('Doe, John')
+    expect(rows[1][4]).toBe('He said "hi"\nbye')
+  })
+
+  it('导出-解析往返一致（含特殊字符与 totp）', () => {
+    const entries = [
+      entry({ title: 'A', password: 'p@ss,1', totpSecret: 'JBSWY3DPEHPK3PXP' }),
+      entry({ title: 'B "quoted"', username: 'x,y', notes: 'line1\r\nline2' }),
+    ]
+    const { drafts } = mapCsvEntries(parseCsvRows(buildCsv(entries)))
+    expect(drafts).toHaveLength(2)
+    expect(drafts[0]).toMatchObject({ title: 'A', password: 'p@ss,1', totpSecret: 'JBSWY3DPEHPK3PXP' })
+    expect(drafts[1].title).toBe('B "quoted"')
+    expect(drafts[1].username).toBe('x,y')
+    expect(drafts[1].notes).toBe('line1\r\nline2')
+  })
+
+  it('软删除条目不导出；空列表仅表头', () => {
+    const csv = buildCsv([entry({ title: 'Alive' }), entry({ title: 'Gone', deletedAt: Date.now() })])
+    expect(csv).toContain('Alive')
+    expect(csv).not.toContain('Gone')
+    expect(buildCsv([])).toBe('name,url,username,password,notes,totp\r\n')
   })
 })

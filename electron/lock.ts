@@ -133,6 +133,17 @@ export class LockManager {
     this.broadcast(true)
   }
 
+  /**
+   * 无副作用校验 PIN（明文 CSV 导出等敏感操作前的二次身份确认，issue #32）。
+   * 不改变锁定态、不消耗解锁退避配额；PIN 错误抛中文错误。
+   */
+  verifyPin(pin: unknown): void {
+    if (this.pinHash === null) return // 未设置 PIN：无需校验（调用方以 pinEnabled 区分）
+    if (typeof pin !== 'string' || this.hash(pin) !== this.pinHash) {
+      throw new Error('PIN 不正确')
+    }
+  }
+
   /** 校验 PIN 并解锁，成功后重载数据并广播；连续失败达阈值后进入指数退避 */
   unlock(pin: unknown, store: VaultStore): void {
     if (!this.locked) return

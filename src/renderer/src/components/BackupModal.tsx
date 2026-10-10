@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
-import type { BackupExportResult, BackupImportResult, CsvImportResult } from '../../../../shared/types'
+import type { BackupExportResult, BackupImportResult, CsvExportResult, CsvImportResult } from '../../../../shared/types'
 
 interface BackupModalProps {
   onClose: () => void
@@ -11,18 +11,26 @@ interface BackupModalProps {
   onImport: (password: string) => Promise<BackupImportResult>
   /** 从第三方密码管理器导入 CSV（App 层透传 IPC，系统打开对话框） */
   onImportCsv: () => Promise<CsvImportResult>
+  /** 导出明文 CSV（App 层透传 IPC；已启用锁定时需携带 PIN，主进程二次身份确认） */
+  onExportCsv: (pin: string | undefined) => Promise<CsvExportResult>
+  /** 是否已启用锁定 PIN（决定明文导出前是否要求输入 PIN） */
+  pinEnabled: boolean
 }
 
 const MIN_PWD = 8
 
-/** 备份与恢复弹窗：口令加密导出 / 从加密文件导入合并 / 从第三方管理器 CSV 导入 */
-export function BackupModal({ onClose, onExport, onImport, onImportCsv }: BackupModalProps): React.JSX.Element {
+/** 备份与恢复弹窗：口令加密导出 / 从加密文件导入合并 / 从第三方管理器 CSV 导入 / 明文 CSV 导出（强确认） */
+export function BackupModal({ onClose, onExport, onImport, onImportCsv, onExportCsv, pinEnabled }: BackupModalProps): React.JSX.Element {
   const [exportPwd, setExportPwd] = useState('')
   const [exportPwd2, setExportPwd2] = useState('')
   const [importPwd, setImportPwd] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  /** 明文 CSV 导出：是否处于强确认态 */
+  const [csvConfirm, setCsvConfirm] = useState(false)
+  /** 强确认态输入的锁定 PIN（pinEnabled 时必填） */
+  const [csvPin, setCsvPin] = useState('')
 
   function fail(message: string): void {
     setError(message)
@@ -88,6 +96,26 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv }: Backup
       }
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'CSV 导入失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /** 明文 CSV 导出（强确认后）：取消保存对话框不产生文件 */
+  async function handleExportCsv(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await onExportCsv(pinEnabled ? csvPin : undefined)
+      if (!result.canceled) {
+        setNotice(`已导出 ${result.count} 条账号为明文 CSV。文件未加密，请妥善保管并尽快删除。`)
+        setCsvConfirm(false)
+        setCsvPin('')
+      }
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'CSV 导出失败')
     } finally {
       setBusy(false)
     }
@@ -165,6 +193,72 @@ export function BackupModal({ onClose, onExport, onImport, onImportCsv }: Backup
         <button type="button" className="btn btn-ghost btn-block" disabled={busy} onClick={() => void handleImportCsv()}>
           选择 CSV 文件并导入
         </button>
+      </div>
+
+      <div className="backup-divider" />
+
+      <div className="backup-section">
+        <span className="field-label">
+          <Icon name="download" size={13} /> 导出明文 CSV（迁移到其他管理器）
+        </span>
+        {!csvConfirm ? (
+          <>
+            <p className="backup-hint">
+              以未加密的标准 CSV（name,url,username,password,notes,totp）导出全部账号，便于迁移到浏览器或其他密码管理器。
+            </p>
+            <button
+              type="button"
+              className="btn btn-ghost btn-danger-ghost btn-block"
+              disabled={busy}
+              onClick={() => {
+                setCsvConfirm(true)
+                setError('')
+              }}
+            >
+              导出明文 CSV…
+            </button>
+          </>
+        ) : (
+          <div className="csv-confirm">
+            <p className="csv-confirm-warning">
+              <Icon name="alert-triangle" size={14} className="csv-confirm-icon" />
+              <span>
+                <strong>风险确认：</strong>
+                明文 CSV 中的密码<strong>未加密</strong>，任何拿到该文件的人都能直接读取全部账号。仅在迁移数据时使用，导出后请妥善保管，并尽快从下载目录等位置删除。
+              </span>
+            </p>
+            {pinEnabled && (
+              <>
+                <label className="field-label" htmlFor="csv-export-pin">
+                  输入锁定 PIN 以确认身份 <span className="required">*</span>
+                </label>
+                <input
+                  id="csv-export-pin"
+                  className="input"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="锁定 PIN"
+                  value={csvPin}
+                  disabled={busy}
+                  onChange={(e) => setCsvPin(e.target.value)}
+                />
+              </>
+            )}
+            <div className="csv-confirm-actions">
+              <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setCsvConfirm(false)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={busy || (pinEnabled && !csvPin)}
+                onClick={() => void handleExportCsv()}
+              >
+                我已了解风险，继续导出
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && <p className="form-error">{error}</p>}

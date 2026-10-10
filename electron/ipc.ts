@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import { exportEncryptedBackup, importEncryptedBackup } from './backup'
-import { mapCsvEntries, parseCsvRows } from './csv'
+import { buildCsv, mapCsvEntries, parseCsvRows } from './csv'
 import type { AppSettings, EntryDraft } from '../shared/types'
 import { LockManager } from './lock'
 import type { SettingsStore } from './settings'
@@ -102,6 +102,31 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
       const { drafts, invalid } = mapCsvEntries(parseCsvRows(text))
       const stats = store.mergeDrafts(drafts)
       return { canceled: false, total: drafts.length, invalid, ...stats }
+    }),
+  )
+
+  // ---- 明文 CSV 导出（数据可携带性；锁定期间拒绝，启用 PIN 时强制身份校验） ----
+
+  ipcMain.handle('backup:export-csv', (_event, pin: unknown) =>
+    guard(async () => {
+      // 二次身份确认：已启用锁定时必须携带正确 PIN（渲染端强确认弹窗后传入）
+      if (lock.pinEnabled) {
+        if (typeof pin !== 'string' || !pin) throw new Error('请输入锁定 PIN 以确认导出')
+        lock.verifyPin(pin)
+      }
+      const win = mainWindow()
+      const result = await dialog.showSaveDialog(win, {
+        title: '导出明文 CSV（谨慎操作）',
+        defaultPath: `safebox-export-${new Date().toISOString().slice(0, 10)}.csv`,
+        filters: [{ name: 'CSV 文件', extensions: ['csv'] }],
+      })
+      if (result.canceled || !result.filePath) return { canceled: true }
+      // 明文落盘仅此一处（用户强确认后）：不写日志、不留临时文件，直接写入目标路径
+      // buildCsv 内部已排除软删除条目，计数口径一致
+      const csv = buildCsv(store.list())
+      fs.writeFileSync(result.filePath, csv, 'utf-8')
+      const count = store.list().filter((e) => !e.deletedAt).length
+      return { canceled: false, path: result.filePath, count }
     }),
   )
 
