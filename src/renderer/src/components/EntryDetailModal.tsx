@@ -13,6 +13,8 @@ interface EntryDetailModalProps {
   onDelete: (entry: AccountEntry) => void
   onToggleFavorite: (entry: AccountEntry) => void
   onCopy: (text: string, label: string) => void
+  /** 错误反馈（如打开链接失败，O22）：App 层透传 toast */
+  onError: (message: string) => void
 }
 
 function formatTime(ts: number): string {
@@ -29,6 +31,7 @@ export function EntryDetailModal({
   onDelete,
   onToggleFavorite,
   onCopy,
+  onError,
 }: EntryDetailModalProps): React.JSX.Element {
   useLang()
   const [showPassword, setShowPassword] = useState(false)
@@ -135,7 +138,12 @@ export function EntryDetailModal({
               type="button"
               className="icon-btn"
               title={t('detail.openInBrowser')}
-              onClick={() => void window.safebox.openExternal(entry.url)}
+              onClick={() =>
+                void window.safebox.openExternal(entry.url).catch((err: unknown) => {
+                  // 打开失败必须有反馈（O22）：优先展示主进程错误（如非 http/https），否则本地化兜底
+                  onError(err instanceof Error ? err.message : t('detail.openLinkFailed'))
+                })
+              }
             >
               <Icon name="external" size={15} />
             </button>

@@ -77,6 +77,7 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
           placeholder={t('lockScreen.pinPlaceholder')}
           value={pin}
           disabled={busy}
+          maxLength={32}
           onChange={(e) => setPin(e.target.value)}
         />
         {error && <p className="form-error lock-error">{error}</p>}

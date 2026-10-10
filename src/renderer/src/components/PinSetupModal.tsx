@@ -71,6 +71,15 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
     }
   }
 
+  // 即时校验（O22）：两次输入不一致 / 长度不足在输入过程中即提示，不等提交；
+  // 提交校验（error）仍为最终防线，优先展示
+  const liveError = !error && newPin && newPin.trim().length < PIN_MIN
+    ? t('pinSetup.pinLengthErr', { min: PIN_MIN, max: PIN_MAX })
+    : !error && confirmPin && newPin.trim() !== confirmPin
+      ? t('pinSetup.pinMismatch')
+      : ''
+  const shownError = error || liveError
+
   return (
     <Modal title={pinEnabled ? t('pinSetup.titleEdit') : t('pinSetup.titleSet')} onClose={onClose}>
       <form onSubmit={(e) => void handleSetup(e)}>
@@ -102,6 +111,7 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
           autoComplete="new-password"
           placeholder={t('pinSetup.newPinPlaceholder')}
           value={newPin}
+          maxLength={PIN_MAX}
           onChange={(e) => setNewPin(e.target.value)}
         />
 
@@ -115,12 +125,13 @@ export function PinSetupModal({ pinEnabled, onClose, onSetup, onClear }: PinSetu
           autoComplete="new-password"
           placeholder={t('pinSetup.confirmPlaceholder')}
           value={confirmPin}
+          maxLength={PIN_MAX}
           onChange={(e) => setConfirmPin(e.target.value)}
         />
 
         <p className="gen-hint">{t('pinSetup.hint')}</p>
 
-        {error && <p className="form-error">{error}</p>}
+        {shownError && <p className="form-error">{shownError}</p>}
 
         <div className="modal-actions">
           {pinEnabled && (

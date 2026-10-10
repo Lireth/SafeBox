@@ -626,6 +626,7 @@ export default function App(): React.JSX.Element {
           onDelete={setDeleteTarget}
           onToggleFavorite={(e) => void handleToggleFavorite(e)}
           onCopy={handleCopy}
+          onError={(message) => showToast(message, 'error')}
         />
       )}
 

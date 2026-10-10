@@ -42,6 +42,8 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
   const [genOptions, setGenOptions] = useState(DEFAULT_GENERATOR)
   /** TOTP 秘钥即时校验错误（空串表示合法或未填写）；主进程 normalizeTotp 仍为最终防线 */
   const [totpError, setTotpError] = useState('')
+  /** 名称字段是否失焦过：失焦后为空才显示必填提示（O22，避免初始新增即报错） */
+  const [titleTouched, setTitleTouched] = useState(false)
   const titleRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -50,6 +52,8 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
 
   const strength = useMemo(() => passwordStrength(form.password), [form.password])
   const canSubmit = form.title.trim().length > 0 && !busy
+  // 名称必填即时提示（O22）：失焦过且为空才显示，与提交按钮的禁用原因呼应
+  const titleError = titleTouched && !form.title.trim() ? t('form.nameRequired') : ''
 
   function patch(partial: Partial<EntryDraft>): void {
     setForm((prev) => ({ ...prev, ...partial }))
@@ -101,7 +105,9 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
           placeholder={t('form.namePlaceholder')}
           value={form.title}
           onChange={(e) => patch({ title: e.target.value })}
+          onBlur={() => setTitleTouched(true)}
         />
+        {titleError && <p className="form-error">{titleError}</p>}
 
         <span className="field-label">{t('form.categoryLabel')}</span>
         <div className="chip-group">

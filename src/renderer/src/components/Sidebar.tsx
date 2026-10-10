@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Icon } from './Icon'
 import { CATEGORIES, type FilterId } from '../lib/categories'
 import { t, useLang } from '../lib/i18n'
@@ -43,7 +43,9 @@ export function Sidebar({
   onSettings,
 }: SidebarProps): React.JSX.Element {
   useLang()
-  const [showClear, setShowClear] = useState(false)
+  // 清除按钮直接从 query 派生（O22）：父层程序化清空搜索（如 Esc 快捷键）时按钮同步消失，
+  // 独立 state 会在该场景残留（曾为已知失同步缺陷）
+  const showClear = query.length > 0
 
   const counts = useMemo(() => {
     const result: Record<string, number> = { all: entries.length, favorite: 0 }
@@ -56,7 +58,6 @@ export function Sidebar({
 
   function handleSearch(value: string): void {
     onQueryChange(value)
-    setShowClear(value.length > 0)
   }
 
   const renderItem = (id: FilterId, label: string, icon: React.ReactNode, count: number): React.JSX.Element => (
