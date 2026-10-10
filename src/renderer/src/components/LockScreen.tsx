@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { t, useLang } from '../lib/i18n'
+import type { UnlockResult } from '../../../../shared/types'
 
 interface LockScreenProps {
   /** 校验 PIN 并解锁（由 App 层透传 window.safebox.unlockApp） */
-  onSubmit: (pin: string) => Promise<void>
+  onSubmit: (pin: string) => Promise<UnlockResult>
 }
 
 /** 全屏锁定遮罩：锁定态下覆盖整个应用，输入 PIN 解锁 */
@@ -14,7 +15,7 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [failCount, setFailCount] = useState(0)
-  /** 主进程退避提示中解析出的剩余冷却秒数（>0 时禁用提交并本地倒计时） */
+  /** 结构化结果携带的退避剩余秒数（>0 时禁用提交并本地倒计时） */
   const [cooldown, setCooldown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -32,21 +33,30 @@ export function LockScreen({ onSubmit }: LockScreenProps): React.JSX.Element {
     if (!pin || busy || cooldown > 0) return
     setBusy(true)
     setError('')
+    // 失败信息以结构化错误码返回（O18）：按码渲染本地化文案，不解析消息文本
+    let result: UnlockResult
     try {
-      await onSubmit(pin)
-      // 成功后由父组件通过 lock:changed 广播切换界面
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '解锁失败'
-      setError(message)
-      setFailCount((n) => n + 1)
-      setPin('')
-      // 从「请 N 秒后重试」/「已锁定 N 秒」文案解析退避时长，进入本地倒计时
-      const match = message.match(/(\d+)\s*秒/)
-      if (message.includes('失败次数过多') && match) {
-        setCooldown(parseInt(match[1], 10) || 30)
-      }
+      result = await onSubmit(pin)
+    } catch {
+      // IPC 通道级异常兜底（正常流程不会发生）
+      setError(t('lockScreen.unlockFailed'))
       setBusy(false)
-      inputRef.current?.focus()
+      return
+    }
+    // 成功：由父组件通过 lock:changed 广播切换界面
+    if (result.ok) return
+    setFailCount((n) => n + 1)
+    setPin('')
+    setBusy(false)
+    inputRef.current?.focus()
+    if (result.code === 'COOLDOWN') {
+      setError(t('lockScreen.tooManyFails'))
+      setCooldown(Math.max(1, Math.ceil((result.retryAfterMs ?? 30_000) / 1000)))
+    } else if (result.code === 'NO_PIN') {
+      // 防御分支：主进程仅在有 PIN 时才会锁定，正常流程不可达
+      setError(t('lockScreen.noPin'))
+    } else {
+      setError(t('lockScreen.wrongPin'))
     }
   }
 

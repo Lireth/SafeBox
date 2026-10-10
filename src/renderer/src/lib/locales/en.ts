@@ -223,6 +223,8 @@ export const en = {
     staleDetail: 'Last updated: {date}',
     itemEditHint: 'Click to edit this account',
     footnote: 'The check runs entirely on this device and makes no network requests.',
+    errorTitle: 'Security check failed',
+    errorDesc: 'Something went wrong during the scan. Please close and retry',
   },
   lockScreen: {
     title: 'SafeBox is locked',
@@ -232,6 +234,10 @@ export const en = {
     unlock: 'Unlock',
     verifying: 'Verifying…',
     cooldown: 'Retry in {seconds}s',
+    wrongPin: 'Incorrect PIN',
+    tooManyFails: 'Too many failed attempts. Please wait and try again',
+    noPin: 'No lock PIN is set',
+    unlockFailed: 'Unlock failed. Please try again',
   },
   pinSetup: {
     titleEdit: 'Change Lock PIN',

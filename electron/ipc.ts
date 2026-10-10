@@ -83,7 +83,8 @@ export function registerIpcHandlers(store: VaultStore, lock: LockManager, settin
   })
 
   ipcMain.handle('lock:unlock', (_event, pin: unknown) => {
-    lock.unlock(pin, store)
+    // 结构化结果（O18）：失败不抛错，渲染端按错误码渲染本地化文案
+    return lock.unlock(pin, store)
   })
 
   // ---- 加密备份导出 / 导入（锁定期间拒绝） ----

@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { BrowserWindow, powerMonitor, safeStorage } from 'electron'
+import type { UnlockResult } from '../shared/types'
 import type { VaultStore } from './vault'
 
 /**
@@ -144,15 +145,19 @@ export class LockManager {
     }
   }
 
-  /** 校验 PIN 并解锁，成功后重载数据并广播；连续失败达阈值后进入指数退避 */
-  unlock(pin: unknown, store: VaultStore): void {
-    if (!this.locked) return
-    if (this.pinHash === null) throw new Error('尚未设置锁定 PIN')
-    // 退避检查先于摘要比对：冷却期内不消耗校验，也不泄露「PIN 是否正确」
+  /**
+   * 校验 PIN 并解锁，返回结构化结果（O18：渲染端按 code 渲染本地化文案，
+   * 不再解析中文错误消息——英文界面下退避倒计时曾因此失效）。
+   * 退避检查先于摘要比对：冷却期内不消耗校验，也不泄露「PIN 是否正确」。
+   */
+  unlock(pin: unknown, store: VaultStore): UnlockResult {
+    // 未锁定时无操作（幂等）：视为已处于解锁状态
+    if (!this.locked) return { ok: true }
+    if (this.pinHash === null) return { ok: false, code: 'NO_PIN' }
     if (this.cooldownUntil > 0) {
       const remainMs = this.cooldownUntil - Date.now()
       if (remainMs > 0) {
-        throw new Error(`失败次数过多，请 ${Math.ceil(remainMs / 1000)} 秒后重试`)
+        return { ok: false, code: 'COOLDOWN', retryAfterMs: remainMs }
       }
       // 冷却到期：仅清除冷却标记，保留 failCount 使后续失败退避翻倍
       this.cooldownUntil = 0
@@ -163,15 +168,16 @@ export class LockManager {
         // 第 5 次失败退避 30s，第 6 次 60s……封顶 5 分钟
         const backoff = Math.min(BASE_COOLDOWN_MS * 2 ** (this.failCount - MAX_UNLOCK_ATTEMPTS), MAX_COOLDOWN_MS)
         this.cooldownUntil = Date.now() + backoff
-        throw new Error(`PIN 不正确，失败次数过多，已锁定 ${Math.round(backoff / 1000)} 秒`)
+        return { ok: false, code: 'COOLDOWN', retryAfterMs: backoff }
       }
-      throw new Error('PIN 不正确')
+      return { ok: false, code: 'PIN_WRONG' }
     }
     this.locked = false
     this.failCount = 0
     this.cooldownUntil = 0
     store.load()
     this.broadcast(false)
+    return { ok: true }
   }
 
   /**

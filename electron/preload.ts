@@ -11,6 +11,7 @@ import type {
   LoadStatus,
   LockState,
   SafeBoxAPI,
+  UnlockResult,
 } from '../shared/types'
 
 // ============================================================
@@ -71,7 +72,7 @@ export const electronAPI: SafeBoxAPI = {
   setupLockPin: (oldPin, newPin) => invoke('lock:setup', oldPin, newPin),
   clearLockPin: (oldPin) => invoke('lock:clear', oldPin),
   lockNow: () => invoke('lock:lock'),
-  unlockApp: (pin) => invoke('lock:unlock', pin),
+  unlockApp: (pin) => invoke<UnlockResult>('lock:unlock', pin),
   onLockChanged: (listener) => {
     const wrapped = (_event: IpcRendererEvent, locked: boolean): void => listener(locked)
     ipcRenderer.on('lock:changed', wrapped)

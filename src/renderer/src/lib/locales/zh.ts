@@ -223,6 +223,8 @@ export const zh = {
     staleDetail: '最后更新：{date}',
     itemEditHint: '点击修改该账号',
     footnote: '体检全程在本机完成，不会发起任何网络请求。',
+    errorTitle: '安全体检失败',
+    errorDesc: '扫描过程出现异常，请关闭本窗口后重试',
   },
   lockScreen: {
     title: '秘匣已锁定',
@@ -232,6 +234,10 @@ export const zh = {
     unlock: '解锁',
     verifying: '验证中…',
     cooldown: '请 {seconds} 秒后重试',
+    wrongPin: 'PIN 不正确',
+    tooManyFails: '失败次数过多，请稍后再试',
+    noPin: '尚未设置锁定 PIN',
+    unlockFailed: '解锁失败，请重试',
   },
   pinSetup: {
     titleEdit: '修改锁定 PIN',

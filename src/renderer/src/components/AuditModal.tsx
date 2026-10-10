@@ -22,12 +22,21 @@ function formatTime(ts: number): string {
 export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React.JSX.Element {
   useLang()
   const [report, setReport] = useState<AuditReport | null>(null)
+  /** 扫描异常（如 WebCrypto 不可用）：展示错误态而非无限 loading */
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
-    void auditEntries(entries).then((result) => {
-      if (!cancelled) setReport(result)
-    })
+    void auditEntries(entries)
+      .then((result) => {
+        if (!cancelled) {
+          setFailed(false)
+          setReport(result)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
     return () => {
       cancelled = true
     }
@@ -62,7 +71,13 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
 
   return (
     <Modal wide title={t('audit.title')} onClose={onClose}>
-      {report === null ? (
+      {failed ? (
+        <div className="audit-empty">
+          <Icon name="alert-triangle" size={32} strokeWidth={1.5} />
+          <h3>{t('audit.errorTitle')}</h3>
+          <p>{t('audit.errorDesc')}</p>
+        </div>
+      ) : report === null ? (
         <div className="audit-loading">
           <div className="spinner" />
         </div>

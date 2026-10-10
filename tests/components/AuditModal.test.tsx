@@ -2,8 +2,15 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AuditModal } from '../../src/renderer/src/components/AuditModal'
+import * as auditLib from '../../src/renderer/src/lib/audit'
 import { STALE_THRESHOLD_MS } from '../../src/renderer/src/lib/audit'
 import type { AccountEntry } from '../../shared/types'
+
+// 包一层 vi.fn（默认仍调用真实实现），使 auditEntries 可在单个用例内替换为异常
+vi.mock('../../src/renderer/src/lib/audit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/renderer/src/lib/audit')>()
+  return { ...actual, auditEntries: vi.fn(actual.auditEntries) }
+})
 
 /** 构造账号条目夹具 */
 function entry(overrides: Partial<AccountEntry> & { id: string; title: string; password: string }): AccountEntry {
@@ -86,5 +93,12 @@ describe('AuditModal 风险分区渲染', () => {
   it('底部注明全程本机完成', async () => {
     setup([entry({ id: 'f', title: 'Any', password: 'abc' })])
     expect(await screen.findByText('体检全程在本机完成，不会发起任何网络请求。')).toBeInTheDocument()
+  })
+
+  it('扫描异常时展示错误态而非无限 loading', async () => {
+    vi.mocked(auditLib.auditEntries).mockRejectedValueOnce(new Error('boom'))
+    setup([entry({ id: 'x', title: 'Any', password: 'abc' })])
+    expect(await screen.findByText('安全体检失败')).toBeInTheDocument()
+    expect(screen.getByText('扫描过程出现异常，请关闭本窗口后重试')).toBeInTheDocument()
   })
 })

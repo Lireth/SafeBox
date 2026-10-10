@@ -69,6 +69,19 @@ export interface LockState {
   locked: boolean
 }
 
+/**
+ * 解锁尝试的结构化结果（O18：渲染端按错误码渲染本地化文案，
+ * 不再解析主进程的中文错误消息——英文界面下退避倒计时曾因此失效）
+ */
+export interface UnlockResult {
+  /** 是否解锁成功（成功后主进程广播 lock:changed，渲染端随之切换界面） */
+  ok: boolean
+  /** 失败错误码；成功时缺省 */
+  code?: 'PIN_WRONG' | 'COOLDOWN' | 'NO_PIN'
+  /** 退避剩余毫秒数（code=COOLDOWN 时提供，渲染端据此启动本地倒计时） */
+  retryAfterMs?: number
+}
+
 /** 应用设置（主进程持久化于 userData/settings.json，非敏感数据） */
 export interface AppSettings {
   /** 关闭主窗口时最小化到系统托盘；false（默认）保持「关闭窗口即退出」 */
@@ -141,8 +154,8 @@ export interface SafeBoxAPI {
   clearLockPin(oldPin: string): Promise<void>
   /** 立即锁定（需已设置 PIN） */
   lockNow(): Promise<void>
-  /** 校验 PIN 并解锁 */
-  unlockApp(pin: string): Promise<void>
+  /** 校验 PIN 并解锁；失败返回结构化错误码（渲染端按码渲染本地化文案，O18） */
+  unlockApp(pin: string): Promise<UnlockResult>
   /** 订阅锁定状态变化，返回取消订阅函数 */
   onLockChanged(listener: (locked: boolean) => void): () => void
   /** 读取应用设置（关闭最小化到托盘等偏好） */

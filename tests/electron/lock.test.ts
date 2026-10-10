@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LockManager } from '../../electron/lock'
 import { VaultStore } from '../../electron/vault'
 import { mockState } from '../mocks/electron'
+import type { UnlockResult } from '../../shared/types'
 
 describe('LockManager', () => {
   let tmpDir: string
@@ -58,8 +59,8 @@ describe('LockManager', () => {
       lock.setupPin('123456', '654321')
       // 新 PIN 生效：旧 PIN 解锁失败
       lock.lock(store)
-      expect(() => lock.unlock('123456', store)).toThrow('不正确')
-      lock.unlock('654321', store)
+      expect(lock.unlock('123456', store)).toEqual({ ok: false, code: 'PIN_WRONG' })
+      expect(lock.unlock('654321', store)).toEqual({ ok: true })
       expect(lock.isLocked).toBe(false)
     })
 
@@ -105,7 +106,7 @@ describe('LockManager', () => {
     it('错误 PIN 拒绝解锁且保持锁定', () => {
       lock.setupPin(undefined, '123456')
       lock.lock(store)
-      expect(() => lock.unlock('999999', store)).toThrow('不正确')
+      expect(lock.unlock('999999', store)).toEqual({ ok: false, code: 'PIN_WRONG' })
       expect(lock.isLocked).toBe(true)
     })
 
@@ -114,7 +115,7 @@ describe('LockManager', () => {
       lock.setupPin(undefined, '123456')
       lock.lock(store)
       expect(store.list()).toEqual([])
-      lock.unlock('123456', store)
+      expect(lock.unlock('123456', store)).toEqual({ ok: true })
       expect(lock.isLocked).toBe(false)
       expect(store.list()).toHaveLength(1)
       expect(store.list()[0].title).toBe('T1')
@@ -125,24 +126,20 @@ describe('LockManager', () => {
       expect(lock.isLocked).toBe(false)
     })
 
-    it('未设置 PIN 时解锁为无操作（防御分支，正常流程不可达）', () => {
-      lock.unlock('123456', store)
+    it('未锁定时解锁幂等返回成功（防御分支，正常流程不可达）', () => {
+      expect(lock.unlock('123456', store)).toEqual({ ok: true })
       expect(lock.isLocked).toBe(false)
     })
   })
 
-  describe('解锁暴力破解防护（指数退避）', () => {
-    /** 锁定并连续失败 n 次，返回各次错误消息 */
-    function failNTimes(n: number): string[] {
-      const messages: string[] = []
+  describe('解锁暴力破解防护（指数退避，结构化结果）', () => {
+    /** 锁定并连续失败 n 次，返回各次结构化结果（O18：失败不再抛错） */
+    function failNTimes(n: number): UnlockResult[] {
+      const results: UnlockResult[] = []
       for (let i = 0; i < n; i++) {
-        try {
-          lock.unlock('000000', store)
-        } catch (err) {
-          messages.push(err instanceof Error ? err.message : '')
-        }
+        results.push(lock.unlock('000000', store))
       }
-      return messages
+      return results
     }
 
     function lockWithPin(): void {
@@ -150,18 +147,21 @@ describe('LockManager', () => {
       lock.lock(store)
     }
 
-    it('前 4 次失败提示「PIN 不正确」，第 5 次触发 30 秒退避', () => {
+    it('前 4 次失败返回 PIN_WRONG，第 5 次触发 30 秒退避', () => {
       lockWithPin()
-      const messages = failNTimes(5)
-      expect(messages.slice(0, 4)).toEqual(Array(4).fill('PIN 不正确'))
-      expect(messages[4]).toContain('失败次数过多')
-      expect(messages[4]).toContain('30 秒')
+      const results = failNTimes(5)
+      expect(results.slice(0, 4)).toEqual(Array(4).fill({ ok: false, code: 'PIN_WRONG' }))
+      // 失败触发退避时 retryAfterMs 为精确退避时长（计算值，非差值）
+      expect(results[4]).toEqual({ ok: false, code: 'COOLDOWN', retryAfterMs: 30_000 })
     })
 
     it('冷却期内即使提交正确 PIN 也被拒绝且不解锁', () => {
       lockWithPin()
       failNTimes(5)
-      expect(() => lock.unlock('123456', store)).toThrow('请')
+      const result = lock.unlock('123456', store)
+      expect(result.ok).toBe(false)
+      expect(result.code).toBe('COOLDOWN')
+      expect(result.retryAfterMs).toBeGreaterThan(0)
       expect(lock.isLocked).toBe(true)
     })
 
@@ -170,17 +170,15 @@ describe('LockManager', () => {
       lockWithPin()
       failNTimes(5) // 30s
       // 冷却期内尝试不消耗退避计数
-      try {
-        lock.unlock('000000', store)
-      } catch {
-        /* 冷却拒绝 */
-      }
+      lock.unlock('000000', store)
       vi.advanceTimersByTime(30_001)
-      failNTimes(1) // 第 6 次真实失败 → 60s
-      expect(() => lock.unlock('123456', store)).toThrow('60 秒后重试')
+      const sixth = failNTimes(1)[0] // 第 6 次真实失败 → 60s
+      expect(sixth).toEqual({ ok: false, code: 'COOLDOWN', retryAfterMs: 60_000 })
+      // 冷却期内正确 PIN 也被拒
+      expect(lock.unlock('123456', store).code).toBe('COOLDOWN')
       vi.advanceTimersByTime(60_001)
       // 冷却到期后正确 PIN 解锁成功
-      lock.unlock('123456', store)
+      expect(lock.unlock('123456', store)).toEqual({ ok: true })
       expect(lock.isLocked).toBe(false)
       vi.useRealTimers()
     })
@@ -188,11 +186,11 @@ describe('LockManager', () => {
     it('成功解锁重置失败计数', () => {
       lockWithPin()
       failNTimes(4)
-      lock.unlock('123456', store)
+      expect(lock.unlock('123456', store)).toEqual({ ok: true })
       // 重新锁定后配额重置：再失败 4 次不触发退避
       lock.lock(store)
-      const messages = failNTimes(4)
-      expect(messages[3]).toBe('PIN 不正确')
+      const results = failNTimes(4)
+      expect(results[3]).toEqual({ ok: false, code: 'PIN_WRONG' })
     })
 
     it('退避翻倍封顶 5 分钟（第 9 次失败为 300 秒）', () => {
@@ -200,16 +198,17 @@ describe('LockManager', () => {
       lockWithPin()
       // 依次经历 30/60/120/240 秒退避，第 9 次失败按 480 秒计算但封顶 300 秒
       const steps = [30_001, 60_001, 120_001, 240_001]
-      failNTimes(5) // 第 5 次 → 30s
+      const results = [...failNTimes(5)] // 第 5 次 → 30s
       for (const ms of steps) {
         vi.advanceTimersByTime(ms)
-        failNTimes(1)
+        results.push(...failNTimes(1))
       }
-      expect(() => lock.unlock('000000', store)).toThrow('请 300 秒后重试')
+      // 第 9 次失败（索引 8）：480s 封顶为 300s
+      expect(results[8]).toEqual({ ok: false, code: 'COOLDOWN', retryAfterMs: 300_000 })
       vi.advanceTimersByTime(300_001)
       // 封顶后继续失败保持 300 秒，不再增长
-      failNTimes(1)
-      expect(() => lock.unlock('000000', store)).toThrow('请 300 秒后重试')
+      const tenth = failNTimes(1)[0]
+      expect(tenth).toEqual({ ok: false, code: 'COOLDOWN', retryAfterMs: 300_000 })
       vi.useRealTimers()
     })
   })
@@ -272,7 +271,7 @@ describe('LockManager', () => {
       }
       expect(lock.isLocked).toBe(true)
       // 正确 PIN 仍可立即解锁（未因 verifyPin 失败进入冷却）
-      expect(() => lock.unlock('123456', store)).not.toThrow()
+      expect(lock.unlock('123456', store)).toEqual({ ok: true })
       expect(lock.isLocked).toBe(false)
     })
   })
