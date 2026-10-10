@@ -18,6 +18,9 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleString('zh-CN', { hour12: false })
 }
 
+/** 密码明文可见时长（毫秒），到期自动隐藏；与剪贴板 30 秒清空同属「限时暴露」模型（issue #26） */
+const PASSWORD_VISIBLE_MS = 15_000
+
 export function EntryDetailModal({
   entry,
   onClose,
@@ -27,6 +30,13 @@ export function EntryDetailModal({
   onCopy,
 }: EntryDetailModalProps): React.JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
+
+  // 明文可见 15 秒后自动隐藏；每次切换为可见都重新计时，隐藏 / 卸载即清理定时器（issue #26）
+  useEffect(() => {
+    if (!showPassword) return
+    const timer = window.setTimeout(() => setShowPassword(false), PASSWORD_VISIBLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [showPassword])
 
   // 切换查看对象时重置密码可见状态（渲染期调整状态，避免 effect 级联渲染）
   const [prevEntryId, setPrevEntryId] = useState(entry.id)
@@ -100,7 +110,7 @@ export function EntryDetailModal({
               <button
                 type="button"
                 className="icon-btn"
-                title={showPassword ? '隐藏密码' : '显示密码'}
+                title={showPassword ? '隐藏密码' : '显示密码（15 秒后自动隐藏）'}
                 onClick={() => setShowPassword((v) => !v)}
               >
                 <Icon name={showPassword ? 'eye-off' : 'eye'} size={15} />
@@ -207,7 +217,7 @@ function HistoryRow({
   const [show, setShow] = useState(false)
   useEffect(() => {
     if (!show) return
-    const timer = window.setTimeout(() => setShow(false), 15_000)
+    const timer = window.setTimeout(() => setShow(false), PASSWORD_VISIBLE_MS)
     return () => window.clearTimeout(timer)
   }, [show])
   return (
