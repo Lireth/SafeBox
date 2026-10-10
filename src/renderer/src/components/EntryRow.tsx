@@ -1,6 +1,8 @@
 import { memo } from 'react'
 import { Icon } from './Icon'
+import { EntryAvatar } from './EntryAvatar'
 import { getCategory } from '../lib/categories'
+import { maskPassword } from '../lib/format'
 import { t, useLang } from '../lib/i18n'
 import type { AccountEntry } from '../../../../shared/types'
 
@@ -13,9 +15,10 @@ interface EntryRowProps {
   onCopy: (text: string, label: string) => void
 }
 
-function maskPassword(password: string): string {
-  if (!password) return t('common.notSet')
-  return '•'.repeat(Math.min(password.length, 12))
+/** 副行展示：优先用户名，无用户名时展示密码掩码 */
+function entrySubtitle(entry: AccountEntry): string {
+  if (entry.username) return entry.username
+  return entry.password ? maskPassword(entry.password) : t('common.notSet')
 }
 
 /**
@@ -32,8 +35,6 @@ function EntryRowBase({
 }: EntryRowProps): React.JSX.Element {
   useLang()
   const category = getCategory(entry.category)
-  const initial = entry.title.charAt(0).toUpperCase() || '?'
-  const avatarColor = `hsl(${category.hue} 62% 52%)`
 
   return (
     <div
@@ -50,10 +51,9 @@ function EntryRowBase({
         }
       }}
     >
-      <div className="entry-avatar" style={{ background: avatarColor }}>
+      <EntryAvatar title={entry.title} category={entry.category}>
         {entry.favorite && <Icon name="star" size={10} filled className="entry-fav-dot" />}
-        {initial}
-      </div>
+      </EntryAvatar>
 
       <div className="entry-main">
         <div className="entry-title-line">
@@ -62,7 +62,7 @@ function EntryRowBase({
             {category.label}
           </span>
         </div>
-        <div className="entry-sub">{entry.username ? entry.username : maskPassword(entry.password)}</div>
+        <div className="entry-sub">{entrySubtitle(entry)}</div>
       </div>
 
       <div className="entry-actions" onClick={(e) => e.stopPropagation()}>

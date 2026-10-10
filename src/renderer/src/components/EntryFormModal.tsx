@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
+import { PasswordGenerator } from './PasswordGenerator'
 import { CATEGORIES } from '../lib/categories'
 import { generatePassword, passwordStrength } from '../lib/password'
 import { buildOtpauthUrl, parseTotpParams } from '../lib/totp'
@@ -194,52 +195,14 @@ export function EntryFormModal({ entry, onClose, onSubmit }: EntryFormModalProps
         )}
 
         {genOpen && (
-          <div className="generator">
-            <div className="field-row">
-              <span className="field-label">{t('form.genLength', { length: genOptions.length })}</span>
-              <button type="button" className="text-btn" onClick={handleGenerate}>
-                <Icon name="refresh" size={13} />
-                {t('form.regen')}
-              </button>
-            </div>
-            <input
-              type="range"
-              min={8}
-              max={64}
-              className="range"
-              value={genOptions.length}
-              onChange={(e) => {
-                const next = { ...genOptions, length: Number(e.target.value) }
-                setGenOptions(next)
-                patch({ password: generatePassword(next) })
-              }}
-            />
-            <div className="checkbox-group">
-              {(
-                [
-                  ['upper', t('form.genUpper')],
-                  ['lower', t('form.genLower')],
-                  ['digits', t('form.genDigits')],
-                  ['symbols', t('form.genSymbols')],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={genOptions[key]}
-                    onChange={(e) => {
-                      const next = { ...genOptions, [key]: e.target.checked }
-                      setGenOptions(next)
-                      // 调整字符类型后立即重新生成
-                      patch({ password: generatePassword(next) })
-                    }}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <p className="gen-hint">{t('form.genHint')}</p>
-          </div>
+          <PasswordGenerator
+            options={genOptions}
+            onChange={(next) => {
+              setGenOptions(next)
+              patch({ password: generatePassword(next) })
+            }}
+            onRegenerate={handleGenerate}
+          />
         )}
 
         <label className="field-label" htmlFor="entry-totp">

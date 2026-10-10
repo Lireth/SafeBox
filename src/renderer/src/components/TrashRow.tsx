@@ -1,5 +1,6 @@
 import { memo, useState } from 'react'
 import { Icon } from './Icon'
+import { EntryAvatar } from './EntryAvatar'
 import { getCategory } from '../lib/categories'
 import { t, useLang } from '../lib/i18n'
 import type { AccountEntry } from '../../../../shared/types'
@@ -26,14 +27,14 @@ function TrashRowBase({ entry, isActive = false, onRestore, onPurge }: TrashRowP
   // 挂载时刻的时间快照：剩余天数随时间流逝而减少，但行内展示取挂载时值即可
   const [now] = useState(() => Date.now())
   const category = getCategory(entry.category)
-  const initial = entry.title.charAt(0).toUpperCase() || '?'
-  const avatarColor = `hsl(${category.hue} 62% 52%)`
 
   return (
     <div className={`entry-row trash-row ${isActive ? 'is-active' : ''}`}>
-      <div className="entry-avatar" style={{ background: avatarColor, filter: 'grayscale(0.6)', opacity: 0.75 }}>
-        {initial}
-      </div>
+      <EntryAvatar
+        title={entry.title}
+        category={entry.category}
+        style={{ filter: 'grayscale(0.6)', opacity: 0.75 }}
+      />
 
       <div className="entry-main">
         <div className="entry-title-line">

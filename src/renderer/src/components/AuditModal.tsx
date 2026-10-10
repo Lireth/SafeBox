@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Modal } from './Modal'
 import { Icon } from './Icon'
-import { getCategory } from '../lib/categories'
+import { EntryAvatar } from './EntryAvatar'
 import { auditEntries, countRiskyEntries, type AuditReport } from '../lib/audit'
+import { formatDate } from '../lib/format'
 import { passwordStrength } from '../lib/password'
 import { t, useLang } from '../lib/i18n'
 import type { AccountEntry } from '../../../../shared/types'
@@ -12,10 +13,6 @@ interface AuditModalProps {
   onClose: () => void
   /** 点击风险条目：关闭面板并打开该条目的编辑表单 */
   onEdit: (entry: AccountEntry) => void
-}
-
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleDateString('zh-CN')
 }
 
 /** 密码安全体检面板：弱口令 / 重复密码 / 久未更新三维扫描（全本地） */
@@ -47,8 +44,6 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
     report !== null && (report.weak.length > 0 || report.duplicateGroups.length > 0 || report.stale.length > 0)
 
   function renderEntryItem(entry: AccountEntry, detail: string): React.JSX.Element {
-    const category = getCategory(entry.category)
-    const initial = entry.title.charAt(0).toUpperCase() || '?'
     return (
       <button
         key={`${entry.id}-${detail}`}
@@ -57,9 +52,7 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
         onClick={() => onEdit(entry)}
         title={t('audit.itemEditHint')}
       >
-        <span className="entry-avatar sm" style={{ background: `hsl(${category.hue} 62% 52%)` }}>
-          {initial}
-        </span>
+        <EntryAvatar title={entry.title} category={entry.category} size="sm" />
         <span className="audit-item-main">
           <span className="audit-item-title">{entry.title}</span>
           <span className="audit-item-detail">{detail}</span>
@@ -133,7 +126,7 @@ export function AuditModal({ entries, onClose, onEdit }: AuditModalProps): React
                     {t('audit.staleTitle')}
                     <span className="audit-count">{report.stale.length}</span>
                   </h4>
-                  {report.stale.map((entry) => renderEntryItem(entry, t('audit.staleDetail', { date: formatTime(entry.updatedAt) })))}
+                  {report.stale.map((entry) => renderEntryItem(entry, t('audit.staleDetail', { date: formatDate(entry.updatedAt) })))}
                 </section>
               )}
             </>
